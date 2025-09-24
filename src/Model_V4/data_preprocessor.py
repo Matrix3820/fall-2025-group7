@@ -26,14 +26,13 @@ current_dir = Path(__file__).parent
 agent_dir = current_dir.parent / "Agent"
 sys.path.append(str(agent_dir))
 
-data_version = "Data_v2"
-model_version = "V2"
+data_version = "Data_v4"
+model_version = "V4"
 
 # from sonnet_agent import SonnetAgent
-# from llama_agent import MetaLlamaAgent as SonnetAgent
-from qwen_agent import QwenAgent as SonnetAgent
+from llama_agent import MetaLlamaAgent as SonnetAgent
+# from qwen_agent import QwenAgent as SonnetAgent
 # from mistral_agent import MistralAgent as SonnetAgent
-
 
 try:
     nltk.data.find('tokenizers/punkt')
@@ -53,7 +52,7 @@ def preprocess_training_data():
 
     print(f"Loading data from: {data_path}")
     df = pd.read_csv(data_path)
-
+    # df = df.sample(n=200, random_state=42)
     print(f"Original data shape: {df.shape}")
 
     artifacts_dir = project_root / "Results" / model_version / "preprocessing"

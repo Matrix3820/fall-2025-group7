@@ -9,8 +9,8 @@ import os
 import json
 from pathlib import Path
 
-data_version = "Data_v2"
-model_version = "V2"
+data_version = "Data_v4"
+model_version = "V4"
 
 def convert_numpy_types(obj):
     if isinstance(obj, (np.integer, np.int64)):
