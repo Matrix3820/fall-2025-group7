@@ -43,7 +43,7 @@ class XGBoostClassifier:
         return df
     
     def prepare_features(self, df):
-        exclude_columns = ['FSR', 'free_response', 'td_or_asd']
+        exclude_columns = ['sub', 'profile', 'FSR', 'free_response', 'td_or_asd']
         
         feature_columns = []
         for col in df.columns:
