@@ -5,7 +5,7 @@ import seaborn as sns
 import os
 import json
 from pathlib import Path
-from sklearn.metrics import accuracy_score, confusion_matrix, classification_report, roc_auc_score
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report, roc_auc_score, f1_score
 from xgboost_model import XGBoostClassifier
 from data_preprocessor import preprocess_prediction_data
 from explainability_analysis import run_explainability_analysis
@@ -120,6 +120,9 @@ def predict_from_file(data_path):
     if 'td_or_asd' in results_df.columns:
         accuracy = accuracy_score(results_df['td_or_asd'], results_df['predicted_td_or_asd'])
         print(f"\nTest Accuracy: {accuracy:.4f}")
+
+        f1 = f1_score(results_df['td_or_asd'], results_df['predicted_td_or_asd'])
+        print(f"\nTest f1-score: {f1:.4f}")
         
         print("\nClassification Report:")
         print(classification_report(results_df['td_or_asd'], results_df['predicted_td_or_asd']))
