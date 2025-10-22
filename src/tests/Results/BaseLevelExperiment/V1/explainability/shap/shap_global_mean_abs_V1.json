@@ -1,0 +1,10 @@
+{
+  "FSR": 2.224177360534668,
+  "shortness_score": 0.144974946975708,
+  "avg_PE": 0.14042191207408905,
+  "flesch_reading_ease": 0.08652171492576599,
+  "sentiment_subjectivity": 0.07331958413124084,
+  "lexical_diversity": 0.05256716161966324,
+  "sentiment_polarity": 0.04258882626891136,
+  "flesch_kincaid_grade": 0.03869636729359627
+}
