@@ -114,16 +114,16 @@ class XGBoostClassifier:
             # 'char_count',
             # 'avg_word_length',
             # 'avg_sentence_length',
-            'shortness_score',
-            'lexical_diversity',
-            'sentiment_polarity',
-            'sentiment_subjectivity',
+            # 'shortness_score',
+            # 'lexical_diversity',
+            # 'sentiment_polarity',
+            # 'sentiment_subjectivity',
             # 'positive_word_count',
             # 'negative_word_count',
             # 'positive_word_ratio',
             # 'negative_word_ratio',
-            'flesch_reading_ease',
-            'flesch_kincaid_grade',
+            # 'flesch_reading_ease',
+            # 'flesch_kincaid_grade',
                            ]
         
         X = df[feature_columns].copy()
