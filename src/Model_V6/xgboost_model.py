@@ -1,3 +1,4 @@
+# added optuna search and used all char+NLP + other important features from dataset. 
 import pandas as pd
 import numpy as np
 import xgboost as xgb
