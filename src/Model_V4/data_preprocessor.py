@@ -30,9 +30,10 @@ data_version = "Data_v4"
 model_version = "V4"
 
 # from sonnet_agent import SonnetAgent
-from llama_agent import MetaLlamaAgent as SonnetAgent
-# from qwen_agent import QwenAgent as SonnetAgent
+# from llama_agent import MetaLlamaAgent as SonnetAgent
+from qwen_agent import QwenAgent as SonnetAgent
 # from mistral_agent import MistralAgent as SonnetAgent
+from trial_data_preprocess import preprocess_trial_data
 
 try:
     nltk.data.find('tokenizers/punkt')
@@ -55,13 +56,19 @@ def preprocess_training_data():
     # df = df.sample(n=200, random_state=42)
     print(f"Original data shape: {df.shape}")
 
+    print(f"Loading Trial Level Data :")
+    trial_df = preprocess_trial_data()
+
+    print("Merging Trial Level data with Base Dataset:")
+    merged_df = pd.merge(df, trial_df, on=["sub", "profile"], how="inner")
+
     artifacts_dir = project_root / "Results" / model_version / "preprocessing"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
 
-    selected_columns = ['FSR', 'avg_PE', 'free_response', 'td_or_asd']
-    df_filtered = df[selected_columns].copy()
+    selected_columns = ['sub', 'profile', 'FSR', 'avg_PE', 'free_response', 'td_or_asd', 'mean_slope', 'mean_slope_overall']
+    df_filtered = merged_df[selected_columns].copy()
 
-    df_filtered = df_filtered.dropna(subset=['FSR', 'avg_PE', 'free_response'])
+    df_filtered = df_filtered.dropna(subset=['FSR', 'avg_PE', 'free_response','mean_slope', 'mean_slope_overall'])
 
     preprocessing_info = {
         'original_shape': df.shape,
