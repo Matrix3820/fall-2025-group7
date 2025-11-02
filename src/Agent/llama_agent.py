@@ -50,16 +50,23 @@ class MetaLlamaAgent:
 
         # Model
 
+        # bnb_config = BitsAndBytesConfig(
+        #     load_in_4bit=True,
+        #     bnb_4bit_quant_type="nf4",
+        #     bnb_4bit_use_double_quant=True,
+        #     bnb_4bit_compute_dtype=torch.float16,
+        # )
+
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
             bnb_4bit_use_double_quant=True,
-            bnb_4bit_compute_dtype=torch.float16,
+            bnb_4bit_compute_dtype=self.dtype or torch.float16,
         )
 
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name,
-            torch_dtype=self.dtype,
+            # torch_dtype=self.dtype,
             device_map="auto" if self.device == "cuda" else None,
             quantization_config=bnb_config,
             trust_remote_code=trust_remote_code,
@@ -131,3 +138,4 @@ class MetaLlamaAgent:
         gen_ids = output[0, inputs["input_ids"].shape[1]:]
         text = self.tokenizer.decode(gen_ids, skip_special_tokens=True).strip()
         return text
+
