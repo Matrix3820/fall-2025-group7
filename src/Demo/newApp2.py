@@ -23,6 +23,10 @@ CURRENT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = CURRENT_DIR.parent.parent
 RESULTS_ROOT = PROJECT_ROOT / "Results"
 DATA_ROOT = PROJECT_ROOT / "data"
+# Ensure Root/src is on sys.path so Model_V1, Model_V2, etc. can be imported
+SRC_ROOT = CURRENT_DIR.parent  # this goes up from Demo/ → src/
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
 
 MODEL_OVERVIEW_MD = \
     {
@@ -361,6 +365,92 @@ class DemoApp:
         # TODO: show SHAP/LIME global & local explanations tied to self.model_version
         st.info("Explainability visualizations (global + local) ")
 
+        # ---- Select explainability type ----
+        explain_type = st.radio("Select explainability method", ["SHAP", "LIME"], horizontal=True)
+
+        # ---- Row selection for local explainability ----
+        row_idx = st.number_input("Select a row index to explain", min_value=0, value=0, step=1)
+        top_n = st.slider("Top features (for SHAP only)", 3, 20, 10)
+
+        st.divider()
+
+        # ---- Dynamic import of explainers ----
+        from importlib import import_module
+
+        try:
+            # Import path: Model_V1.shap_explain  or  Model_V1.lime_explain
+            model_folder = f"Model_{self.model_version}"
+            module_name = "shap_explain" if explain_type == "SHAP" else "lime_explain"
+            full_module_path = f"{model_folder}.{module_name}"
+
+            expl = import_module(full_module_path)
+            st.success(f"Loaded {full_module_path}")
+        except Exception as e:
+            st.error(f"❌ Could not import {module_name}.py for model {self.model_version}")
+            st.info(f"Tried path: {full_module_path.replace('.', '/')}.py")
+            st.exception(e)
+            return
+
+        # ---- Global explainability ----
+        if st.button(f"Run {explain_type} Global Explainability"):
+            with st.spinner(f"Running {explain_type} global explainability..."):
+                results = expl.explain_global()
+            st.success("Global explainability generated.")
+            for output in results.get("outputs", []):
+                if output.endswith(".png"):
+                    st.image(output, caption=f"{explain_type} Global Plot")
+                elif output.endswith(".json"):
+                    st.markdown("**Top global features:**")
+                    with open(output, "r") as f:
+                        st.json(dict(list(json.load(f).items())[:10]))
+
+        st.divider()
+
+        # ---- Local explainability ----
+        if st.button(f"Run {explain_type} Local Explainability"):
+            with st.spinner(f"Running {explain_type} local explainability for row {row_idx}..."):
+                if explain_type == "SHAP":
+                    local_results = expl.explain_local(indices=[row_idx], top_n=top_n)
+                else:
+                    local_results = expl.explain_local(indices=[row_idx])
+            if not local_results:
+                st.warning("No local explanation generated.")
+                return
+            res = local_results[0]
+
+            # Display visualization
+            if "plot" in res:
+                st.image(res["plot"], caption=f"{explain_type} Local Plot (Row {row_idx})")
+            elif "png" in res:
+                st.image(res["png"], caption=f"{explain_type} Local Plot (Row {row_idx})")
+
+            # Dynamic Markdown summary
+            if explain_type == "SHAP":
+                st.markdown(f"""
+                    **Dynamic Explanation (SHAP)**  
+                    - **Row:** {row_idx}  
+                    - **Base value:** `{res.get('base_value', 0):.3f}`  
+                    - Red (positive) bars increase ASD probability; blue (negative) bars increase TD probability.  
+                    - The final prediction depends on the sum of all SHAP contributions added to the base value.
+                """)
+            else:
+                st.markdown(f"""
+                    **Dynamic Explanation (LIME)**  
+                    - **Row:** {row_idx}  
+                    - Green bars push prediction toward ASD, red bars toward TD.  
+                    - The length of each bar shows how strongly that feature influenced this instance.  
+                    - Check the generated `.html` file ({res['html']}) for an interactive visualization.
+                """)
+
+        st.markdown("---")
+        st.info("This section updates dynamically based on the selected model and row.")
+
+    def show_model_and_data_page(self):
+        st.header(f"🔍 Explainability — {self.model_version}")
+        st.caption(f"Using artifacts from: `Results/{self.model_version}`")
+        # TODO: show SHAP/LIME global & local explanations tied to self.model_version
+        st.info("Explainability visualizations (global + local) ")
+
 def main():
     app = DemoApp()
 
@@ -373,6 +463,7 @@ def main():
         "🔍 xAI - Explainability": "explainability",
         "🔮 Test Your Data": "predictions",
         "Cluster Analysis": "clustering",
+        "Experiments": "experiments",
 
     }
 
