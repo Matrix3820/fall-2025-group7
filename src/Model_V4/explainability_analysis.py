@@ -61,38 +61,65 @@ class ExplainabilityAnalyzer:
         
         return characteristic_contributions
     
-    def analyze_td_vs_asd_patterns(self, df, X, y):
-        td_patterns = {}
-        asd_patterns = {}
-        
-        td_mask = y == 0
-        asd_mask = y == 1
-        
-        for char in self.characteristics:
-            char_clean = char.replace(' ', '_').replace(',', '').replace('(', '').replace(')', '')
-            char_features = [col for col in X.columns if col.startswith(char_clean)]
-            
-            if char_features:
-                td_values = X[td_mask][char_features].mean()
-                asd_values = X[asd_mask][char_features].mean()
-                
-                td_patterns[char] = td_values.to_dict()
-                asd_patterns[char] = asd_values.to_dict()
-        
-        return td_patterns, asd_patterns
-    
+    # def analyze_td_vs_asd_patterns(self, df, X, y):
+    #     td_patterns = {}
+    #     asd_patterns = {}
+    #
+    #     td_mask = y == 0
+    #     asd_mask = y == 1
+    #
+    #     for char in self.characteristics:
+    #         char_clean = char.replace(' ', '_').replace(',', '').replace('(', '').replace(')', '')
+    #         char_features = [col for col in X.columns if col.startswith(char_clean)]
+    #
+    #         if char_features:
+    #             td_values = X[td_mask][char_features].mean()
+    #             asd_values = X[asd_mask][char_features].mean()
+    #
+    #             td_patterns[char] = td_values.to_dict()
+    #             asd_patterns[char] = asd_values.to_dict()
+    #
+    #     return td_patterns, asd_patterns
+
+    def analyze_td_vs_asd_patterns(self, df, X, y, n_features: int = 20):
+
+        td_mask = (y == 0)
+        asd_mask = (y == 1)
+
+        def _top_names(n=20):
+            fi = self.classifier.feature_importance or {}
+            feats_sorted = sorted(fi.items(), key=lambda kv: kv[1], reverse=True)
+            names = [f for f, _ in feats_sorted]
+            return [f for f in names if f in X.columns][:n]
+
+        top_feats = _top_names(n_features)
+
+        td_vals = {f: float(X.loc[td_mask, f].mean()) for f in top_feats if f in X.columns}
+        asd_vals = {f: float(X.loc[asd_mask, f].mean()) for f in top_feats if f in X.columns}
+
+        return td_vals, asd_vals
+
     def get_top_discriminative_features(self, n_features=20):
         if self.classifier.feature_importance is None:
             return None
-        
+
         sorted_features = sorted(
-            self.classifier.feature_importance.items(), 
-            key=lambda x: x[1], 
+            self.classifier.feature_importance.items(),
+            key=lambda x: x[1],
             reverse=True
         )
-        
+
         return sorted_features[:n_features]
-    
+
+
+    # def get_top_discriminative_features(self, n_features=20, X=None):
+    #     fi = self.classifier.feature_importance or {}
+    #     feats_sorted = sorted(fi.items(), key=lambda x: x[1], reverse=True)
+    #     names = [f for f, _ in feats_sorted]
+    #     if X is not None:
+    #         names = [f for f in names if f in X.columns]
+    #     return names[:n_features]
+
     def analyze_text_patterns_by_class(self, df):
         text_analysis = {}
         

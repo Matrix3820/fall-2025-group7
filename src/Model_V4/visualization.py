@@ -241,14 +241,10 @@ class ModelVisualizer:
             # Look for the feature in TD and ASD patterns
             td_val = 0
             asd_val = 0
-            
-            # Search through characteristics for matching features
-            for char in td_patterns.keys():
-                char_clean = char.replace(' ', '_').replace(',', '').replace('(', '').replace(')', '')
-                if feature_name.startswith(char_clean):
-                    td_val = td_patterns[char].get(feature_name, 0)
-                    asd_val = asd_patterns[char].get(feature_name, 0)
-                    break
+
+            td_val = td_patterns[feature_name]
+            asd_val = asd_patterns[feature_name]
+
             
             td_values.append(td_val)
             asd_values.append(asd_val)
@@ -308,11 +304,11 @@ def create_visualizations():
     print("Creating feature importance plot...")
     visualizer.create_feature_importance_plot(explainability_data)
     
-    print("Creating characteristic importance plot...")
-    visualizer.create_characteristic_importance_plot(explainability_data)
+    # print("Creating characteristic importance plot...")
+    # visualizer.create_characteristic_importance_plot(explainability_data)
     
-    print("Creating TD vs ASD comparison plot...")
-    visualizer.create_td_vs_asd_comparison_plot(explainability_data)
+    # print("Creating TD vs ASD comparison plot...")
+    # visualizer.create_td_vs_asd_comparison_plot(explainability_data)
     
     print("Creating feature importance by target plot...")
     visualizer.create_feature_importance_by_target_plot(explainability_data)
