@@ -95,22 +95,31 @@ Refined traits + stronger regularization; calibrated probabilities.
 
 """,
 
-    "V5": """
-## Model Overview (V5)
+    "V7-1": """
+## Model Overview (V7.1)
 
-Production-ready: thresholds, drift checks, and richer explainability.
+- Data Source : Data_V7
+- Features Added : TDNorm PE and Concept Learning
+- Train-Test Split : 80-20 Stratified Split with Seed 42
+- Baseline Model for FSR overlap Test
+""",
 
-### Key Features
-- All V4 features
-- Threshold tuning for F1/Recall
-- Data drift monitors (WIP)
+    "V7-2": """
+## Model Overview (V7.2)
 
-### Pipeline
-1. Preprocess + traits
-2. Final features + thresholds
-3. XGBoost
-4. Explainability
-5. Visualization + monitoring
+- Data Source : Data_V7
+- Features Added : TDNorm PE and Concept Learning
+- Train-Test Split : FSR Overlap Region is Training Set
+- Baseline Model for FSR overlap Test
+""",
+
+    "V7-3": """
+## Model Overview (V7.3)
+
+- Data Source : Data_V7
+- Features Added : TDNorm PE and Concept Learning
+- Train-Test Split : FSR Non-Overlap Region is Training Set
+- Baseline Model for FSR overlap Test
 """
 }
 
@@ -166,10 +175,10 @@ if "page" not in st.session_state:
     st.session_state.page = "home"
 
 if "model_version" not in st.session_state:
-    st.session_state.model_version = "V1"
+    st.session_state.model_version = "V7.1"
 
 if "data_version" not in st.session_state:
-    st.session_state.data_version = "DATA_V1"
+    st.session_state.data_version = "DATA_V7.1"
 
 if "available_models" not in st.session_state:
     st.session_state.available_models = _discover_models()
@@ -270,7 +279,7 @@ class DemoApp:
 
         visualizer = viz.ModelVisualizerInteractive()
 
-        tab1, tab2, = st.tabs(["Training Performance", "Test Performance"])
+        tab1, tab2, tab3 = st.tabs(["Training Performance", "Test Performance", "Feature Visualizations"])
 
         with tab1:
 
@@ -289,6 +298,14 @@ class DemoApp:
 
             else:
                 st.info("Test Report not found. Run predict.py to generate a training report.")
+
+        with tab3:
+            if self.explainability_data:
+                st.plotly_chart(visualizer.fig_feature_importance_by_target(self.explainability_data), use_container_width=True)
+
+            else:
+                st.info("Test Report not found. Run predict.py to generate a training report.")
+
 
     def show_prediction_page(self):
         st.header(f"🔮 Predictions — {self.model_version}")
@@ -400,6 +417,7 @@ class DemoApp:
             if selected != self.data_version:
                 self.set_data_version(selected)
                 st.success(f"Data version set to **{self.data_version}**.")
+                st.rerun()
 
         with tab2:
             # ---- Model selector ----
@@ -416,6 +434,7 @@ class DemoApp:
             if selected != self.model_version:
                 self.set_model_version(selected)
                 st.success(f"Model version set to **{self.model_version}**.")
+                st.rerun()
 
             st.markdown("### Checklist for Specific Files Needed for Downstream Analysis")
 
@@ -477,7 +496,6 @@ class DemoApp:
                     st.json(features_selected)
                 else:
                     st.info("Training Report not found. Run train.py to generate a training report.")
-
 
 
 
