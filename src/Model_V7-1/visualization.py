@@ -10,8 +10,8 @@ from pathlib import Path
 import plotly.express as px
 import plotly.graph_objects as go
 
-data_version = "Data_v4"
-model_version = "V4"
+data_version = "Data_v7-1"
+model_version = "V7-1"
 
 class ModelVisualizer:
     def __init__(self):

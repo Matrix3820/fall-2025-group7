@@ -26,12 +26,12 @@ current_dir = Path(__file__).parent
 agent_dir = current_dir.parent / "Agent"
 sys.path.append(str(agent_dir))
 
-data_version = "Data_v4"
-model_version = "V4"
+data_version = "Data_v7-3"
+model_version = "V7-3"
 
 # from sonnet_agent import SonnetAgent
 # from llama_agent import MetaLlamaAgent as SonnetAgent
-# from qwen_agent import QwenAgent as SonnetAgent
+from qwen_agent import QwenAgent as SonnetAgent
 # from mistral_agent import MistralAgent as SonnetAgent
 # from trial_data_preprocess import preprocess_trial_data
 
@@ -48,32 +48,37 @@ except LookupError:
 
 def preprocess_training_data():
     current_dir = Path(__file__).parent
-    experiment_root = current_dir.parent
-    data_path = current_dir / "LLM data_aggregate.csv"
+    project_root = current_dir.parent.parent
+    data_path = project_root / "data" / data_version / "LLM data_aggregate.csv"
 
     print(f"Loading data from: {data_path}")
     df = pd.read_csv(data_path)
     # df = df.sample(n=200, random_state=42)
     print(f"Original data shape: {df.shape}")
 
-    # artifacts_dir = experiment_root / "Results" / model_version / "preprocessing"
-    # artifacts_dir.mkdir(parents=True, exist_ok=True)
+    # print(f"Loading Trial Level Data :")
+    # trial_df = preprocess_trial_data()
+    #
+    # print("Merging Trial Level data with Base Dataset:")
+    # merged_df = pd.merge(df, trial_df, on=["sub", "profile"], how="inner")
+
+    artifacts_dir = project_root / "Results" / model_version / "preprocessing"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
 
     selected_columns = ['sub', 'FSR', 'TDNorm_avg_PE','overall_avg_PE','TDnorm_concept_learning','overall_concept_learning', 'free_response_TDprof_norm', 'td_or_asd', ]
     df_filtered = df[selected_columns].copy()
 
     df_filtered = df_filtered.dropna()
-    df = df_filtered
 
-    # preprocessing_info = {
-    #     'original_shape': df.shape,
-    #     'filtered_shape': df_filtered.shape,
-    #     'selected_columns': selected_columns,
-    #     'target_distribution': df_filtered['td_or_asd'].value_counts().to_dict()
-    # }
-    #
-    # with open(artifacts_dir / 'preprocessing_info.json', 'w') as f:
-    #     json.dump(preprocessing_info, f, indent=2)
+    preprocessing_info = {
+        'original_shape': df.shape,
+        'filtered_shape': df_filtered.shape,
+        'selected_columns': selected_columns,
+        'target_distribution': df_filtered['td_or_asd'].value_counts().to_dict()
+    }
+
+    with open(artifacts_dir / 'preprocessing_info.json', 'w') as f:
+        json.dump(preprocessing_info, f, indent=2)
 
     # train_df, test_df = train_test_split(
     #     df_filtered,
@@ -82,39 +87,37 @@ def preprocess_training_data():
     #     stratify=df_filtered['td_or_asd']
     # )
 
+    df = df_filtered
 
     class0 = df[df['td_or_asd'] == 0]['FSR']
     class1 = df[df['td_or_asd'] == 1]['FSR']
-
 
     min0, max0 = class0.min(), class0.max()
     min1, max1 = class1.min(), class1.max()
     overlap_min = max(min0, min1)
     overlap_max = min(max0, max1)
 
-
     if overlap_min <= overlap_max:
         df_test = df[(df['FSR'] >= overlap_min) & (df['FSR'] <= overlap_max)]
         df_train = df[~((df['FSR'] >= overlap_min) & (df['FSR'] <= overlap_max))]
-        print(f"✅ Overlap range: [{overlap_min:.4f}, {overlap_max:.4f}]")
+        print(f"Overlap range: [{overlap_min:.4f}, {overlap_max:.4f}]")
         print(f"Train set size: {len(df_train)}, Test set size: {len(df_test)}")
     else:
-        print("❌ No overlap between FSR values of class 0 and class 1.")
+        print("No overlap between FSR values of class 0 and class 1.")
         df_train = df.copy()
         df_test = pd.DataFrame(columns=df.columns)
-
 
     df_train = df_train.reset_index(drop=True)
     df_test = df_test.reset_index(drop=True)
 
-    train_df = df_train
-    test_df = df_test
+    train_df = df_test
+    test_df = df_train
 
     print(f"Train set shape: {train_df.shape}")
     print(f"Test set shape: {test_df.shape}")
 
-    train_path = current_dir /f"train.csv"
-    test_path = current_dir / f"test.csv"
+    train_path = project_root / "data" / data_version / f"LLM_data_train_{model_version}.csv"
+    test_path = project_root / "data" / data_version / f"LLM_data_test_{model_version}.csv"
 
     train_df.to_csv(train_path, index=False)
     test_df.to_csv(test_path, index=False)
@@ -125,8 +128,8 @@ def preprocess_training_data():
     train_processed = process_features(train_df)
     test_processed = process_features(test_df)
 
-    train_output_path = current_dir / f"train.csv"
-    test_output_path = current_dir / f"test.csv"
+    train_output_path = project_root / "data" / data_version / f"LLM_data_train_preprocessed_{model_version}.csv"
+    test_output_path = project_root / "data" / data_version / f"LLM_data_test_preprocessed_{model_version}.csv"
 
     train_processed.to_csv(train_output_path, index=False)
     test_processed.to_csv(test_output_path, index=False)
@@ -349,9 +352,8 @@ def process_features(df):
     processed_df = df.copy()
 
     scaler = StandardScaler()
-    processed_df['FSR_scaled'] = scaler.fit_transform(processed_df[['FSR']])
-    processed_df['TDNorm_avg_PE_scaled'] = scaler.fit_transform(processed_df[['TDNorm_avg_PE']])
-    processed_df['overall_avg_PE_scaled'] = scaler.fit_transform(processed_df[['overall_avg_PE']])
+    # processed_df['FSR_scaled'] = scaler.fit_transform(processed_df[['FSR']])
+    # processed_df['avg_PE_scaled'] = scaler.fit_transform(processed_df[['avg_PE']])
 
     # char_extractor = CharacteristicFeatureExtractor()
     nlp_extractor = NLPFeatureExtractor()
@@ -376,7 +378,7 @@ def preprocess_prediction_data(df, is_test_data=False):
     project_root = current_dir.parent.parent
 
     if is_test_data:
-        test_preprocessed_path = current_dir / "test.csv"
+        test_preprocessed_path = project_root / "data" / data_version / f"LLM_data_test_preprocessed_{model_version}.csv"
 
         if test_preprocessed_path.exists():
             print(f"Loading preprocessed test data from: {test_preprocessed_path}")
@@ -384,20 +386,21 @@ def preprocess_prediction_data(df, is_test_data=False):
         else:
             print("Preprocessed test data not found. Processing test data...")
 
-    # artifacts_dir = project_root / "Results" / model_version / "preprocessing"
-    # info_path = artifacts_dir / 'preprocessing_info.json'
-    #
-    # if not info_path.exists():
-    #     raise FileNotFoundError(f"Preprocessing info not found at {info_path}. Please run training first.")
+    artifacts_dir = project_root / "Results" / model_version / "preprocessing"
+    info_path = artifacts_dir / 'preprocessing_info.json'
 
-    # with open(info_path, 'r') as f:
-    #     preprocessing_info = json.load(f)
+    if not info_path.exists():
+        raise FileNotFoundError(f"Preprocessing info not found at {info_path}. Please run training first.")
+
+    with open(info_path, 'r') as f:
+        preprocessing_info = json.load(f)
 
     print("Preprocessing info loaded successfully.")
 
-    selected_columns = ['FSR', 'avg_PE', 'free_response', 'td_or_asd']
+    selected_columns = ['sub', 'FSR', 'TDNorm_avg_PE', 'overall_avg_PE', 'TDnorm_concept_learning',
+                        'overall_concept_learning', 'free_response_TDprof_norm', 'td_or_asd', ]
     df_filtered = df[selected_columns].copy()
-    df_filtered = df_filtered.dropna(subset=['FSR', 'avg_PE', 'free_response'])
+    df_filtered = df_filtered.dropna()
 
     processed_df = process_features(df_filtered)
 

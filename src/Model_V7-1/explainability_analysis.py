@@ -8,8 +8,8 @@ import os
 import json
 from pathlib import Path
 
-data_version = "Data_v4"
-model_version = "V4"
+data_version = "Data_v7-1"
+model_version = "V7-1"
 
 class ExplainabilityAnalyzer:
     def __init__(self):
@@ -124,7 +124,7 @@ class ExplainabilityAnalyzer:
         text_analysis = {}
         
         for class_val in df['td_or_asd'].unique():
-            class_texts = df[df['td_or_asd'] == class_val]['free_response'].dropna()
+            class_texts = df[df['td_or_asd'] == class_val]['free_response_TDprof_norm'].dropna()
             
             all_text = ' '.join(class_texts.astype(str))
             words = all_text.lower().split()
