@@ -472,10 +472,15 @@ class DemoApp:
 
         with tab1:
             # ---- Data selector ----
+            st.markdown("## Data Overview")
+
             st.markdown("""
-            - **Data V1:** Raw data at trial level
-            - **Data V2:** Aggregated data with slope features  
-            - **Data V3:** Aggregated data with concept learning features""")
+            The data is provided by The George Washington University - Department of Psychological 
+            & Brain Sciences. There are 1,119 participants in this data aging from 8 to 12 years old.
+            
+            - **Data V1:** Raw data at trial level (187,187 observations and 19 variables)
+            - **Data V2:** Aggregated data with slope features (2,648 observations and 11 variables)  
+            - **Data V3:** Aggregated data with concept learning features (1,119 observations and 10 variables)""")
 
             st.markdown("#### Select a Data Version to View")
             selected = st.selectbox(
