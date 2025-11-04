@@ -252,7 +252,74 @@ class DemoApp:
     # ----- Pages -----
     def show_home_page(self):
         st.header(f"📊 About the Project : 🧠 TD/ASD Classification ")
-        # TODO: Summary of Project and Tabs
+
+        # =======================
+        # Project Overview
+        # =======================
+
+        st.markdown("""
+            ### Project Overview
+            This project aims to investigate how **interpretable,
+            multi-modal machine learning models** can enhance the
+            diagnosis and understand of **Autism Spectrum Disorder
+            (ASD)**. By integrating **behavioral** and **linguistic
+            data**, the study aims to move beyond traditional, subjective,
+            assessments toward more objective, data-driven approaches.
+            The proposed models seek to improve **diagnosis precision**
+            by identifying subtle patterns across multiple data types, enable
+            **subtype discovery** through clustering of behavioral and linguistic
+            traits, and enhance **generalizability** by developing frameworks that
+            perform robustly across diverse populations and datasets. Ultimately,
+            this research contributes to more accurate, transparent, and inclusive
+            ASD prediction and analysis.
+
+            ---
+            """)
+
+        # ==========================================
+        # 🎯 Key Objectives | 🧰 Tools & Techniques
+        # ==========================================
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.subheader("🎯 Key Objectives")
+            st.markdown("""
+            - 🧩 Develop interpretable machine learning models  
+            - 🗣️ Analyze linguistic and behavioral patterns  
+            - 🧠 Identify subtypes of ASD using clustering  
+            - 📈 Improve diagnostic generalization across datasets
+            """)
+
+        with col2:
+            st.subheader("🧰 Tools & Techniques")
+            st.markdown("""
+            - **LLM Agent:** Qwen  
+            - **NLP:** BERT  
+            - **Classification Model:** XGBoost  
+            - **Dimension Reduction:** PCA, AGAE  
+            - **Clustering Model:** KMeans, Gaussian Mixture Model, HDBSCAN  
+            - **Explainability Method:** SHAP, LIME
+            """)
+
+        # =======================
+        # 🧭 App Navigation Guide
+        # =======================
+        st.markdown("---")
+        st.subheader("🧭 App Navigation Guide")
+
+        st.markdown("""
+        Use the tabs at the top to explore different parts of the project:
+
+        - **🏠 Home** – Project overview, key objectives, tools 
+        - **📈 Data & Model** – Data versions, Data dictionary, EDA, Models selection, Confusion matrix, F1-scores
+        - **📊 Model Results** – Train accuracy, Test accuracy
+        - **🧩 Cluster Analysis** – Unsupervised clustering (KMeans, GMM, HDBSCAN) and ASD subtype discovery  
+        - **🔍 xAI - Explainability** – SHAP / LIME explanations for model predictions and important features
+        - **🔮 Test Your Data** - Upload and test your own dataset with the preferred model
+        - **🔬 Experiments** - Experiment and compare different combinations of features
+
+        """)
 
 
     def show_results_page(self):
@@ -400,10 +467,20 @@ class DemoApp:
         st.title("Data and Model Cards")
         st.markdown("### Autism Spectrum Disorder Classification Using Trial and Text Features")
 
-        tab1, tab2 = st.tabs(["Data Cards", "Model Cards and Selection"])
+        tab1, tab2 = st.tabs(["📂 Data Version", "🧮 Model Version"])
 
         with tab1:
             # ---- Data selector ----
+            st.markdown("## Data Overview")
+
+            st.markdown("""
+                    The data is provided by The George Washington University - Department of Psychological 
+                    & Brain Sciences. There are 1,119 participants in this data aging from 8 to 12 years old.
+
+                    - **Data V1:** Raw data at trial level (187,187 observations and 19 variables)
+                    - **Data V2:** Aggregated data with slope features (2,648 observations and 11 variables)  
+                    - **Data V3:** Aggregated data with concept learning features (1,119 observations and 10 variables)""")
+
             st.markdown("#### Select a Data Version to View")
             selected = st.selectbox(
                 "Choose which Data version to explore:",
@@ -418,6 +495,8 @@ class DemoApp:
                 self.set_data_version(selected)
                 st.success(f"Data version set to **{self.data_version}**.")
                 st.rerun()
+            # TODO: add data dictionary for selected data version
+            # TODO: add EDA for selected data version
 
         with tab2:
             # ---- Model selector ----
@@ -506,12 +585,12 @@ def main():
 
     pages = {
         "🏠 Home": "home",
-        "Model & Data" : "overview",
+        "📈 Data & Model" : "overview",
         "📊 Model Results": "results",
         "🔍 xAI - Explainability": "explainability",
-        "Cluster Analysis": "clustering",
+        "🧩 Cluster Analysis": "clustering",
         "🔮 Test Your Data": "predictions",
-        "Experiments": "experiments",
+        "🔬 Experiments": "experiments",
     }
 
     for page_name, page_key in pages.items():
