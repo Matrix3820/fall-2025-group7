@@ -9,6 +9,7 @@ from data_preprocessor import preprocess_clustering_data
 from visualization import (
     plot_correlation_heatmap,
     plot_pca_projection,
+    plot_pca_projection_streamlit,   # added for Streamlit HTML
     plot_aic_bic_vs_k,
     plot_gmm_uncertainty,
     plot_pca_feature_loadings,
@@ -20,7 +21,6 @@ from visualization import (
 data_version = "Data_Clustering_v2"
 model_version = "Clustering_V2"
 # ------------------------------------------------------------
-
 
 class ClusterAnalyzerV2:
     """Full PCA + GMM pipeline with automatic cluster selection (via BIC)."""
@@ -52,9 +52,15 @@ class ClusterAnalyzerV2:
     def run_pca_gmm(self, df, save_dir, method_name="gmm"):
         """Runs PCA + GMM with automatic selection of k using BIC."""
         features = [col for col in df.columns if col not in ['td_or_asd', 'cluster']]
-
         target_col = "td_or_asd"
         X = df[features].values
+
+        # === Subfolder structure ===
+        proj_dir = save_dir / "projections"
+        metric_dir = save_dir / "metrics_visuals"
+        feat_dir = save_dir / "feature_visuals"
+        for d in [proj_dir, metric_dir, feat_dir]:
+            d.mkdir(parents=True, exist_ok=True)
 
         # === PCA Transformation ===
         pca = PCA(n_components=2)
@@ -67,14 +73,15 @@ class ClusterAnalyzerV2:
         plt.xlabel("Components")
         plt.ylabel("Cumulative Explained Variance")
         plt.tight_layout()
-        plt.savefig(save_dir / "pca_variance.png", dpi=300)
+        plt.savefig(proj_dir / "pca_variance.png", dpi=300)
+        plt.savefig(proj_dir / "pca_variance.pdf", dpi=300)
         plt.close()
 
         # === Automatic GMM Cluster Selection (via BIC) ===
         n_components_range = range(2, 9)
         bic_scores, aic_scores, gmms = [], [], []
-
         print("   → Searching for optimal GMM cluster count using BIC...")
+
         for n in n_components_range:
             gmm = GaussianMixture(
                 n_components=n,
@@ -93,7 +100,6 @@ class ClusterAnalyzerV2:
         best_gmm = gmms[best_idx]
         labels = best_gmm.predict(X_pca)
         responsibilities = best_gmm.predict_proba(X_pca)
-
         df["cluster"] = labels
 
         print(f"   ✓ Best number of clusters (BIC): {best_k}")
@@ -101,31 +107,49 @@ class ClusterAnalyzerV2:
         # === Save AIC/BIC Plot ===
         plot_aic_bic_vs_k(
             list(n_components_range), aic_scores, bic_scores,
-            save_dir / f"aic_bic_vs_k_{method_name}.png",
+            metric_dir / f"aic_bic_vs_k_{method_name}.png",
             method_name
         )
 
         # === PCA Projections ===
+        # Clusters — distinct colors
         plot_pca_projection(
             X_pca, df, "cluster",
-            save_dir / f"pca_{method_name}_cluster_projection.png",
-            title=f"PCA Projection colored by {method_name.upper()} Clusters"
+            proj_dir / f"pca_cluster_projection_{method_name}.png",
+            title="2D Representation of GMM Clusters"
         )
 
+        # TD/ASD Target — soft red/green palette, dynamic title
         if target_col in df.columns:
+            title = (
+                "2D Representation of ASD Participants"
+                if df[target_col].nunique() == 1
+                else "2D Representation of TD/ASD Participants"
+            )
             plot_pca_projection(
                 X_pca, df, target_col,
-                save_dir / f"pca_target_projection_{method_name}.png",
-                title=f"PCA Projection colored by Target ({method_name.upper()})"
+                proj_dir / f"pca_target_projection_{method_name}.png",
+                title=title
+            )
+
+        # === Streamlit Interactive Versions ===
+        plot_pca_projection_streamlit(
+            X_pca, df, color_col="cluster",
+            save_path=proj_dir / f"pca_cluster_projection_{method_name}.html"
+        )
+        if target_col in df.columns:
+            plot_pca_projection_streamlit(
+                X_pca, df, color_col=target_col,
+                save_path=proj_dir / f"pca_target_projection_{method_name}.html"
             )
 
         # === GMM Uncertainty Visualization ===
-        plot_gmm_uncertainty(X_pca, responsibilities, save_dir / f"pca_{method_name}_uncertainty.png")
+        plot_gmm_uncertainty(X_pca, responsibilities, proj_dir / f"pca_{method_name}_uncertainty.png")
 
         # === Feature Importance Visualizations ===
-        plot_pca_feature_loadings(pca, features, save_dir / f"pca_feature_loadings_{method_name}.png", method_name)
-        plot_cluster_feature_means(df, features, save_dir / f"cluster_feature_means_{method_name}.png", method_name)
-        plot_feature_variance(df, features, save_dir / f"feature_variance_{method_name}.png", method_name)
+        plot_pca_feature_loadings(pca, features, feat_dir / f"pca_feature_loadings_{method_name}.png", method_name)
+        plot_cluster_feature_means(df, features, feat_dir / f"cluster_feature_means_{method_name}.png", method_name)
+        plot_feature_variance(df, features, feat_dir / f"feature_variance_{method_name}.png", method_name)
 
         # === Save Metrics Summary ===
         metrics = {

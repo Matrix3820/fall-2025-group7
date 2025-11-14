@@ -10,6 +10,7 @@ import seaborn as sns
 from PIL import Image
 import plotly.express as px
 from importlib import import_module
+import plotly.figure_factory as ff
 
 # ----- App / Layout -----
 st.set_page_config(
@@ -251,12 +252,591 @@ class DemoApp:
 
     # ----- Pages -----
     def show_home_page(self):
-        st.header(f"📊 About the Project : 🧠 TD/ASD Classification ")
-        # TODO: Summary of Project and Tabs
+        st.header(f"🏠 About the Project")
+
+        # =======================
+        # Project Overview
+        # =======================
+
+        st.markdown("""
+            ### Project Overview
+            This project aims to investigate how **interpretable,
+            multi-modal machine learning models** can enhance the
+            diagnosis and understand of **Autism Spectrum Disorder
+            (ASD)**. By integrating **behavioral** and **linguistic
+            data**, the study aims to move beyond traditional, subjective,
+            assessments toward more objective, data-driven approaches.
+            The proposed models seek to improve **diagnosis precision**
+            by identifying subtle patterns across multiple data types, enable
+            **subtype discovery** through clustering of behavioral and linguistic
+            traits, and enhance **generalizability** by developing frameworks that
+            perform robustly across diverse populations and datasets. Ultimately,
+            this research contributes to more accurate, transparent, and inclusive
+            ASD prediction and analysis.
+
+            ---
+            """)
+
+        # ==========================================
+        # 🎯 Key Objectives | 🧰 Tools & Techniques
+        # ==========================================
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.subheader("🎯 Key Objectives")
+            st.markdown("""
+            - 🧩 Develop interpretable machine learning models  
+            - 🗣️ Analyze behavioral and linguistic patterns  
+            - 🧠 Identify subtypes of ASD using clustering  
+            - 📈 Improve diagnostic generalization across datasets
+            """)
+
+        with col2:
+            st.subheader("🧰 Tools & Techniques")
+            st.markdown("""
+            - **LLM Agent:** Qwen  
+            - **NLP:** BERT  
+            - **Classification Model:** XGBoost  
+            - **Dimension Reduction:** PCA, AGAE  
+            - **Clustering Model:** KMeans, Gaussian Mixture Model, HDBSCAN  
+            - **Explainability Method:** SHAP, LIME
+            """)
+
+        # =======================
+        # 🧭 App Navigation Guide
+        # =======================
+        st.markdown("---")
+        st.subheader("🧭 App Navigation Guide")
+
+        st.markdown("""
+        Use the tabs on the left to explore different parts of the project:
+
+        - **🏠 Home** – Project overview, Key objectives, Tools and techniques
+        - **📈 Data & Model** – Data versions, Data dictionary, Models selection
+        - **📊 EDA** - Exploratory Data Analysis for the chosen features
+        - **🧮 Model Results** – Train accuracy, Test accuracy, Confusion matrix, F1-scores
+        - **🧩 Cluster Analysis** – Unsupervised clustering (KMeans, GMM, HDBSCAN) and ASD subtype discovery  
+        - **🔍 xAI - Explainability** – SHAP / LIME explanations for model predictions and important features
+    
+        """)
+
+    def show_model_and_data_page(self):
+        st.header("📈 Data and Model Cards")
+
+        st.markdown("""
+            <style>
+            /* Center and evenly space Streamlit tabs */
+            div[data-baseweb="tab-list"] {
+                justify-content: space-evenly;
+            }
+            </style>
+        """, unsafe_allow_html=True)
+
+        tab1, tab2 = st.tabs(["📂 Data Card", "🧮 Model Card"])
+
+
+        with tab1:
+            # ---- Data selector ----
+            st.markdown("## Data Overview")
+
+            st.markdown("""
+            The data is provided by The George Washington University - Department of Psychological 
+            & Brain Sciences. There are 1,119 participants in this data aging from 8 to 12 years old.
+            """)
+
+            # File paths
+            current_dir = Path(__file__).resolve().parent
+            project_root = current_dir.parent.parent
+
+            dict_v1_path = project_root / "data" / "Data_card" / "LLM data_trial_dictionary.csv"
+            dict_v2_path = project_root / "data" / "Data_card" / "LLM data dictionary.csv"
+            dict_v3_path = project_root / "data" / "Data_card" / "LLM data_aggregate_dictionary.csv"
+
+            data_v1_path = project_root / "data" / "Data_card" / "LLM data_trial.csv"
+            data_v2_path = project_root / "data" / "Data_card" / "LLM data.csv"
+            data_v3_path = project_root / "data" / "Data_card" / "LLM data_aggregate.csv"
+
+
+            # --- Data V1 ---
+            with st.expander("Data V1: Raw Trial-Level Data", expanded=False):
+                st.write("""
+                    - 187,187 observations  
+                    - 19 variables  
+                    - Contains raw data at the trial level for all participants  
+                    """)
+
+                # Data dictionary for V1
+                st.markdown("#### Data Dictionary – Data V1")
+                if not dict_v1_path.exists():
+                    st.error("❌ Data V1 dictionary file not found.")
+                else:
+                    try:
+                        dict_v1 = pd.read_csv(dict_v1_path)
+                        st.dataframe(dict_v1, use_container_width=True, height=300)
+                    except Exception as e:
+                        st.warning(f"⚠️ Could not load Data V1 dictionary: {e}")
+
+                # Data V1 Preview
+                st.markdown("#### Data Preview")
+                if not data_v1_path.exists():
+                    st.error("❌ Data V1 file not found. Check the path or file name.")
+                else:
+                    try:
+                        df_v1 = pd.read_csv(data_v1_path)
+                        st.dataframe(df_v1.head(20))
+                    except Exception as e:
+                        st.warning(f"⚠️ Could not load Data V1: {e}")
+
+                    # Buttons
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button("Use Data V1 for Modeling", key="use_v1"):
+                            self.set_data_version("Data V1")
+                            st.success(f"✅ Data version set to **{self.data_version}**.")
+                            st.rerun()
+                    with col2:
+                        if st.button("See EDA for Data V1", key="eda_v1"):
+                            st.session_state["page"] = "eda"
+                            st.session_state["selected_data_version"] = "Data V1"
+                            st.rerun()
+
+            # --- Data V2 ---
+            with st.expander("Data V2: Aggregated with Slope Features", expanded=False):
+                st.write("""
+                    - 2,648 observations  
+                    - 11 variables  
+                    - Aggregated per participant for each profile with computed slope features (avg_PE) 
+                    """)
+
+                # Data dictionary for V2
+                st.markdown("#### Data Dictionary – Data V2")
+                if not dict_v2_path.exists():
+                    st.error("❌ Data V2 dictionary file not found.")
+                else:
+                    try:
+                        dict_v2 = pd.read_csv(dict_v2_path)
+                        st.dataframe(dict_v2, use_container_width=True, height=300)
+                    except Exception as e:
+                        st.warning(f"⚠️ Could not load Data V2 dictionary: {e}")
+
+                # Data V2 Preview
+                st.markdown("#### Data Preview")
+                if not data_v2_path.exists():
+                    st.error("❌ Data V2 file not found. Check the path or file name.")
+                else:
+                    try:
+                        df_v2 = pd.read_csv(data_v2_path)
+                        st.dataframe(df_v2.head(20))
+                    except Exception as e:
+                        st.warning(f"⚠️ Could not load Data V2: {e}")
+
+                # Buttons
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("Use Data V2 for Modeling", key="use_v2"):
+                        self.set_data_version("Data V2")
+                        st.success(f"✅ Data version set to **{self.data_version}**.")
+                        st.rerun()
+                with col2:
+                    if st.button("See EDA for Data V2", key="eda_v2"):
+                        st.session_state["page"] = "eda"
+                        st.session_state["selected_data_version"] = "Data V2"
+                        st.rerun()
+
+            # --- Data V3 ---
+            with st.expander("Data V3: Aggregated with Concept Learning Features", expanded=False):
+                st.write("""
+                    - 1,119 observations  
+                    - 10 variables  
+                    - Participant-level dataset with cognitive and behavioral learning features  
+                    """)
+
+                # Data dictionary for V2
+                st.markdown("#### Data Dictionary – Data V3")
+                if not dict_v3_path.exists():
+                    st.error("❌ Data V3 dictionary file not found.")
+                else:
+                    try:
+                        dict_v3 = pd.read_csv(dict_v3_path)
+                        st.dataframe(dict_v3, use_container_width=True, height=300)
+                    except Exception as e:
+                        st.warning(f"⚠️ Could not load Data V3 dictionary: {e}")
+
+                # Data V3 Preview
+                st.markdown("#### Data Preview")
+                if not data_v3_path.exists():
+                    st.error("❌ Data V3 file not found. Check the path or file name.")
+                else:
+                    try:
+                        df_v3 = pd.read_csv(data_v3_path)
+                        st.dataframe(df_v3.head(20))
+                    except Exception as e:
+                        st.warning(f"⚠️ Could not load Data V3: {e}")
+
+                # Buttons
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("Use Data V3 for Modeling", key="use_v3"):
+                        self.set_data_version("Data V3")
+                        st.success(f"✅ Data version set to **{self.data_version}**.")
+                        st.rerun()
+                with col2:
+                    if st.button("See EDA for Data V3", key="eda_v3"):
+                        st.session_state["page"] = "eda"
+                        st.session_state["selected_data_version"] = "Data V3"
+                        st.rerun()
+
+
+
+
+        with tab2:
+            # ---- Model selector ----
+            st.markdown("#### Select a Model Version")
+            selected = st.selectbox(
+                "Choose which model version to explore:",
+                options=st.session_state.available_models,
+                index=st.session_state.available_models.index(st.session_state.model_version)
+                if st.session_state.model_version in st.session_state.available_models else 0,
+                key="model_version_select"
+            )
+
+            # Apply selection immediately if changed
+            if selected != self.model_version:
+                self.set_model_version(selected)
+                st.success(f"Model version set to **{self.model_version}**.")
+                st.rerun()
+
+            st.markdown("### Checklist for Specific Files Needed for Downstream Analysis")
+
+            data = [
+                ["Processed Training Data", f"data/Data_{self.model_version}",
+                 f"LLM_data_train_preprocessed_{self.model_version}", "", ""],
+
+                ["Processed Test Data", f"data/Data_{self.model_version}",
+                 f"LLM_data_test_preprocessed_{self.model_version}", "", ""],
+
+                ["Training Results", f"Results/{self.model_version}",
+                 f"training_results_{self.model_version}", "", ""],
+
+                ["Test Results", f"Results/{self.model_version}",
+                 f"test_results_{self.model_version}", "", ""],
+
+                ["Model Pkl File", f"Results/{self.model_version}",
+                 f"xgboost_model_{self.model_version}", "", ""]
+            ]
+
+            df = pd.DataFrame(data, columns=["Files", "Directory", "Filename", "Status", "Instruction"])
+
+            for i, row in df.iterrows():
+                if i in [0, 1]:
+                    ext = ".csv"
+                    script_hint = "run data_preprocesor.py"
+                elif i in [2, 3]:
+                    ext = ".json"
+                    if i == 2:
+                        script_hint = "run train.py"
+                    if i == 3:
+                        script_hint = "run predict.py"
+                else:
+                    ext = ".pkl"
+                    script_hint = "run train.py"
+
+                path = PROJECT_ROOT / row["Directory"] / (row["Filename"] + ext)
+                exists = path.exists()
+
+                df.loc[i, "Status"] = "✅ Found" if exists else "❌ Missing"
+                df.loc[i, "Instruction"] = "Proceed" if exists else script_hint
+            st.dataframe(df, use_container_width=True)
+
+            st.markdown("---")
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown(get_overview_md(self.model_version))
+
+                if st.button("🚀 Explore Model Results"):
+                    st.session_state.page = "results"
+                    st.rerun()
+
+            with col2:
+                st.subheader("Selected Feature List")
+                if self.training_results:
+                    features_selected = self.training_results['feature_names']
+                    st.info(f"Number of Features : {self.training_results['n_features']}")
+                    st.json(features_selected)
+                else:
+                    st.info("Training Report not found. Run train.py to generate a training report.")
+
+    def show_eda_page(self):
+        st.header("📊 Explanatory Data Analysis")
+
+        st.markdown("""
+                    <style>
+                    /* Center and evenly space Streamlit tabs */
+                    div[data-baseweb="tab-list"] {
+                        justify-content: space-evenly;
+                    }
+                    </style>
+                """, unsafe_allow_html=True)
+
+        # ---------- 1. Which data version? (default = Data V1) ----------
+
+
+        current_dir = Path(__file__).resolve().parent
+        project_root = current_dir.parent.parent
+        data_dir = project_root / "data" / "Data_card"
+
+        version_files = {
+            "Data V1": data_dir / "LLM data_trial.csv",
+            "Data V2": data_dir / "LLM data.csv",
+            "Data V3": data_dir / "LLM data_aggregate.csv",
+        }
+
+        selected_version = st.session_state.get("selected_data_version", "Data V1")
+        if selected_version not in version_files:
+            selected_version = "Data V1"
+
+        # Put the selected version FIRST so its tab is active by default
+        ordered_versions = [selected_version] + [
+            v for v in version_files.keys() if v != selected_version
+        ]
+
+        tabs = st.tabs([f"{v} " for v in ordered_versions])
+        tab_map = dict(zip(ordered_versions, tabs))
+
+        # ---------- Helper: render EDA for a single version ----------
+        def render_eda_for_version(version_name: str, file_path: Path):
+            if not file_path.exists():
+                st.error(f"❌ File for **{version_name}** not found at `{file_path}`.")
+                return
+
+            try:
+                df = pd.read_csv(file_path)
+            except Exception as e:
+                st.error(f"⚠️ Failed to load {version_name}: {e}")
+                return
+
+            # === Overview ===
+            st.subheader(f"{version_name} Overview")
+            st.write(f"**Shape:** {df.shape[0]:,} rows × {df.shape[1]} columns")
+            st.write(f"**File:** `{file_path.name}`")
+
+            # === Data Preview (expander) ===
+
+            with st.expander(f"{version_name} Preview", expanded=False):
+                st.dataframe(df.head(10), use_container_width=True)
+
+            # === Data types + summary stats side-by-side ===
+            numeric_df = df.select_dtypes(include="number")
+            cat_df = df.select_dtypes(exclude="number")
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.markdown("#### Data Types")
+                dtypes_df = (
+                    df.dtypes
+                    .reset_index()
+                    .rename(columns={"index": "Column", 0: "Type"})
+                )
+                st.dataframe(dtypes_df, use_container_width=True)
+
+            with col2:
+                st.markdown("#### Summary Statistics")
+                if not numeric_df.empty:
+                    st.dataframe(numeric_df.describe(), use_container_width=True)
+                else:
+                    st.info("No numeric columns found for summary statistics.")
+
+
+
+            # === Feature-wise visualizations ===
+            st.markdown("---")
+            st.subheader("Feature Visualizations")
+
+            all_columns = df.columns.tolist()
+
+            # Choose default features based on which data version we're in
+            if version_name == "Data V1":
+                candidates = ["sub", "trial", "profile", "concept"]
+            elif version_name == "Data V2":
+                candidates = ["avg_PE"]
+            elif version_name == "Data V3":
+                candidates = [
+                    "TDNorm_avg_PE",
+                    "overall_avg_PE",
+                    "TDnorm_concept_learning",
+                    "overall_concept_learning",
+                ]
+            else:
+                candidates = []
+
+            # Keep only those that actually exist in the dataframe
+            default_features = [c for c in candidates if c in all_columns]
+
+            # Fallback in case some names don't exist
+            if not default_features:
+                default_features = all_columns[:3]
+
+            selected_features = st.multiselect(
+                "Select features to visualize:",
+                options=all_columns,
+                default=default_features,
+                help="Choose one or more columns to generate Plotly charts for.",
+                key=f"feature_select_{version_name}",  # keep per-tab state
+            )
+
+            if not selected_features:
+                st.info("Select at least one feature to see graphs.")
+                return
+
+            cols_in_row = 2 if len(selected_features) > 1 else 1
+            row_cols = None
+
+            for idx, col in enumerate(selected_features):
+                # New row every `cols_in_row` features
+                if idx % cols_in_row == 0:
+                    row_cols = st.columns(cols_in_row)
+
+                target_col = row_cols[idx % cols_in_row]
+
+                with target_col:
+                    st.markdown(f"### 📌 {col}")
+
+                    series = df[col].dropna()
+                    if series.empty:
+                        st.info("No data available for this feature (all values are missing).")
+                        continue
+
+                    n_unique = series.nunique()
+
+                    # Numeric → histogram
+                    if pd.api.types.is_numeric_dtype(series):
+                        fig = px.histogram(
+                            df,
+                            x=col,
+                            nbins=30,
+                            title=f"Distribution of {col} ",
+                            subtitle=f"Unique values: {n_unique}",
+                        )
+                        fig.update_layout(bargap=0.05)
+                        st.plotly_chart(fig, use_container_width=True)
+
+                    # Categorical → value-counts bar chart
+                    else:
+                        value_counts = series.value_counts().reset_index().head(30)
+                        value_counts.columns = [col, "Count"]
+
+                        fig = px.bar(
+                            value_counts,
+                            x=col,
+                            y="Count",
+                            title=f"Value Counts for {col} ",
+                            subtitle= f"Unique values: {n_unique}",
+                        )
+                        fig.update_layout(xaxis_tickangle=-45)
+                        st.plotly_chart(fig, use_container_width=True)
+
+
+
+                # === Correlation heatmap ===
+            st.markdown("---")
+
+            if not numeric_df.empty and numeric_df.shape[1] > 1:
+                st.subheader("Correlation Heatmap")
+                st.markdown("Checking for Data Leakage")
+                corr = numeric_df.corr()
+                fig = px.imshow(
+                    corr,
+                    text_auto=False,
+                    color_continuous_scale='RdBu',
+                    zmin=-1,
+                    zmax=1
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            elif not numeric_df.empty:
+                st.info("Only one numeric column found — correlation heatmap not meaningful.")
+            else:
+                st.info("No numeric columns available for correlation heatmap.")
+
+            # === FSR distribution by target ===
+            st.markdown("---")
+            st.subheader("FSR Distribution by Target")
+
+            FSR_COL = "FSR"
+            TARGET_COL = "td_or_asd"
+
+            # Fixed label + color mapping (reuse this everywhere in your app)
+            LABEL_MAP = {
+                0: "0: TD",
+                1: "1: ASD",
+                "0": "0: TD",
+                "1": "1: ASD",
+            }
+            COLOR_MAP = {
+                0: "#E74C3C",  # TD = red
+                1: "#3498DB",  # ASD = blue
+                "0": "#E74C3C",
+                "1": "#3498DB",
+            }
+
+            if FSR_COL in df.columns and TARGET_COL in df.columns:
+                # Get unique target values present in this df
+                unique_vals = df[TARGET_COL].dropna().unique()
+
+                # Enforce a consistent order: 0 then 1 (works if stored as int or str)
+                target_order = []
+                for key in [0, 1, "0", "1"]:
+                    if key in unique_vals and key not in target_order:
+                        target_order.append(key)
+
+                # Fallback in case something unexpected is in the column
+                if not target_order:
+                    target_order = list(unique_vals)
+
+                groups = [
+                    df[df[TARGET_COL] == t][FSR_COL].dropna()
+                    for t in target_order
+                ]
+                labels = [LABEL_MAP.get(t, str(t)) for t in target_order]
+                colors = [COLOR_MAP.get(t, "#7f7f7f") for t in target_order]  # default grey if unknown
+
+                # Create smoothed density plot (KDE)
+                fig_fsr = ff.create_distplot(
+                    groups,
+                    group_labels=labels,
+                    show_hist=False,
+                    show_rug=False,
+                    colors=colors,
+                    curve_type="kde",
+                )
+
+                # Fill under each curve for smooth shaded look
+                for trace in fig_fsr.data:
+                    trace.update(fill="tozeroy", opacity=0.4)
+
+                fig_fsr.update_layout(
+                    title="FSR Distribution by Target",
+                    xaxis_title=FSR_COL,
+                    yaxis_title="Density",
+                    legend_title="Diagnosis (Target)",
+                    template="simple_white",
+                )
+
+                st.plotly_chart(fig_fsr, use_container_width=True)
+            else:
+                st.info(f"Columns `{FSR_COL}` and/or `{TARGET_COL}` not found in this dataset.")
+
+        # ---------- Render each tab's EDA ----------
+        for version_name, file_path in version_files.items():
+            with tab_map[version_name]:
+                render_eda_for_version(version_name, file_path)
+
 
 
     def show_results_page(self):
-        st.header(f"📊 Results — {self.model_version}")
+        st.header(f"🧮 Results — {self.model_version}")
         st.caption(f"Reading from: `Results/{self.model_version}`")
         # TODO: load and display figures/metrics specific to self.model_version
         # st.info("Results page ")
@@ -306,11 +886,6 @@ class DemoApp:
             else:
                 st.info("Test Report not found. Run predict.py to generate a training report.")
 
-
-    def show_prediction_page(self):
-        st.header(f"🔮 Predictions — {self.model_version}")
-        # TODO: wire predictor for the selected version
-        st.info("Make predictions on your data")
 
     def show_explainability_page(self):
         st.header(f"🔍 Explainability — {self.model_version}")
@@ -396,106 +971,8 @@ class DemoApp:
         st.markdown("---")
         st.info("This section updates dynamically based on the selected model and row.")
 
-    def show_model_and_data_page(self):
-        st.title("Data and Model Cards")
-        st.markdown("### Autism Spectrum Disorder Classification Using Trial and Text Features")
-
-        tab1, tab2 = st.tabs(["Data Cards", "Model Cards and Selection"])
-
-        with tab1:
-            # ---- Data selector ----
-            st.markdown("#### Select a Data Version to View")
-            selected = st.selectbox(
-                "Choose which Data version to explore:",
-                options=st.session_state.available_datasets,
-                index=st.session_state.available_datasets.index(st.session_state.data_version)
-                if st.session_state.available_datasets in st.session_state.available_datasets else 0,
-                key="data_version_select"
-            )
-
-            # Apply selection immediately if changed
-            if selected != self.data_version:
-                self.set_data_version(selected)
-                st.success(f"Data version set to **{self.data_version}**.")
-                st.rerun()
-
-        with tab2:
-            # ---- Model selector ----
-            st.markdown("#### Select a Model Version")
-            selected = st.selectbox(
-                "Choose which model version to explore:",
-                options=st.session_state.available_models,
-                index=st.session_state.available_models.index(st.session_state.model_version)
-                if st.session_state.model_version in st.session_state.available_models else 0,
-                key="model_version_select"
-            )
-
-            # Apply selection immediately if changed
-            if selected != self.model_version:
-                self.set_model_version(selected)
-                st.success(f"Model version set to **{self.model_version}**.")
-                st.rerun()
-
-            st.markdown("### Checklist for Specific Files Needed for Downstream Analysis")
-
-            data = [
-                ["Processed Training Data", f"data/Data_{self.model_version}",
-                 f"LLM_data_train_preprocessed_{self.model_version}", "", ""],
-
-                ["Processed Test Data", f"data/Data_{self.model_version}",
-                 f"LLM_data_test_preprocessed_{self.model_version}", "", ""],
-
-                ["Training Results", f"Results/{self.model_version}",
-                 f"training_results_{self.model_version}", "", ""],
-
-                ["Test Results", f"Results/{self.model_version}",
-                 f"test_results_{self.model_version}", "", ""],
-
-                ["Model Pkl File", f"Results/{self.model_version}",
-                 f"xgboost_model_{self.model_version}", "", ""]
-            ]
-
-            df = pd.DataFrame(data, columns=["Files", "Directory", "Filename", "Status", "Instruction"])
-
-            for i, row in df.iterrows():
-                if i in [0, 1]:
-                    ext = ".csv"
-                    script_hint = "run data_preprocesor.py"
-                elif i in [2, 3]:
-                    ext = ".json"
-                    if i == 2:
-                        script_hint = "run train.py"
-                    if i == 3:
-                        script_hint = "run predict.py"
-                else:
-                    ext = ".pkl"
-                    script_hint = "run train.py"
-
-                path = PROJECT_ROOT / row["Directory"] / (row["Filename"] + ext)
-                exists = path.exists()
-
-                df.loc[i, "Status"] = "✅ Found" if exists else "❌ Missing"
-                df.loc[i, "Instruction"] = "Proceed" if exists else script_hint
-            st.dataframe(df, use_container_width=True)
-
-            st.markdown("---")
-
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown(get_overview_md(self.model_version))
-
-                if st.button("🚀 Explore Model Results"):
-                    st.session_state.page = "results"
-                    st.rerun()
-
-            with col2:
-                st.subheader("Selected Feature List")
-                if self.training_results:
-                    features_selected = self.training_results['feature_names']
-                    st.info(f"Number of Features : {self.training_results['n_features']}")
-                    st.json(features_selected)
-                else:
-                    st.info("Training Report not found. Run train.py to generate a training report.")
+    def show_cluster_analysis_page(self):
+        st.header("🧩 Cluster Analysis")
 
 
 
@@ -506,12 +983,11 @@ def main():
 
     pages = {
         "🏠 Home": "home",
-        "Model & Data" : "overview",
-        "📊 Model Results": "results",
+        "📈 Data & Model" : "overview",
+        "📊 EDA": "eda",
+        "🧮 Model Results": "results",
         "🔍 xAI - Explainability": "explainability",
-        "Cluster Analysis": "clustering",
-        "🔮 Test Your Data": "predictions",
-        "Experiments": "experiments",
+        "🧩 Cluster Analysis": "clustering",
     }
 
     for page_name, page_key in pages.items():
@@ -538,14 +1014,21 @@ def main():
     # Route to selected page
     if st.session_state.page == "home":
         app.show_home_page()
+
     elif st.session_state.page == "overview":
         app.show_model_and_data_page()
+
+    elif st.session_state.page == "eda":
+        app.show_eda_page()
+
     elif st.session_state.page == "results":
         app.show_results_page()
-    elif st.session_state.page == "predictions":
-        app.show_prediction_page()
+
     elif st.session_state.page == "explainability":
         app.show_explainability_page()
+
+    elif st.session_state.page == "clustering":
+        app.show_cluster_analysis_page()
 
 if __name__ == "__main__":
     main()

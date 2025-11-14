@@ -1,4 +1,3 @@
-
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -14,6 +13,7 @@ from data_preprocessor import preprocess_clustering_data
 from visualization import (
     plot_correlation_heatmap,
     plot_pca_projection,
+    plot_pca_projection_streamlit,   # Added Streamlit support
     plot_silhouette_plot,
     plot_db_index_vs_k,
     plot_ari_nmi_bar,
@@ -22,12 +22,10 @@ from visualization import (
     plot_feature_variance
 )
 
-
 # ---------------------------------------------------------
 data_version = "Data_Clustering_v1"
 model_version = "Clustering_V1"
 # ---------------------------------------------------------
-
 
 class ClusterAnalyzer:
     """Complete unsupervised clustering pipeline using PCA + KMeans."""
@@ -57,7 +55,6 @@ class ClusterAnalyzer:
     # ---------------------------------------------------------
     def run_pca_kmeans(self, df, save_dir, cluster_range=(2, 6), method_name="kmeans"):
         """Performs PCA + KMeans clustering and saves all results."""
-        # Updated feature list based on scaled preprocessing
         features = [
             'FSR_scaled', 'BIS_scaled', 'SRS.Raw_scaled',
             'TDNorm_avg_PE_scaled', 'overall_avg_PE_scaled',
@@ -65,6 +62,13 @@ class ClusterAnalyzer:
         ]
         target_col = "td_or_asd"
         X = df[features].values
+
+        # === Subfolder structure ===
+        proj_dir = save_dir / "projections"
+        metric_dir = save_dir / "metrics_visuals"
+        feat_dir = save_dir / "feature_visuals"
+        for d in [proj_dir, metric_dir, feat_dir]:
+            d.mkdir(parents=True, exist_ok=True)
 
         # === PCA Transformation ===
         pca = PCA(n_components=2)
@@ -77,7 +81,8 @@ class ClusterAnalyzer:
         plt.xlabel("Components")
         plt.ylabel("Cumulative Explained Variance")
         plt.tight_layout()
-        plt.savefig(save_dir / "pca_variance.png", dpi=300)
+        plt.savefig(proj_dir / "pca_variance.png", dpi=300)
+        plt.savefig(proj_dir / "pca_variance.pdf", dpi=300)
         plt.close()
 
         # === Evaluate KMeans over range ===
@@ -97,40 +102,52 @@ class ClusterAnalyzer:
 
         plot_silhouette_plot(
             k_values, silhouette_scores,
-            save_dir / f"silhouette_plot_{method_name}.png",
+            metric_dir / f"silhouette_plot_{method_name}.png",
             title=f"Silhouette Score vs K ({method_name.upper()})"
         )
 
         plot_db_index_vs_k(
             k_values, db_scores,
-            save_dir / f"db_index_vs_k_{method_name}.png",
+            metric_dir / f"db_index_vs_k_{method_name}.png",
             title=f"Davies–Bouldin Index vs K ({method_name.upper()})"
         )
 
         if ari_scores and nmi_scores:
-            plot_ari_nmi_bar(k_values, ari_scores, nmi_scores, save_dir / "ari_nmi_bar.png")
+            plot_ari_nmi_bar(k_values, ari_scores, nmi_scores, metric_dir / "ari_nmi_bar.png")
 
         # === Pick best k ===
         best_k = k_values[np.argmax(silhouette_scores)]
         kmeans = KMeans(n_clusters=best_k, random_state=42)
         df["cluster"] = kmeans.fit_predict(X_pca)
 
+        print(f"   ✓ Best number of clusters (Silhouette): {best_k}")
+
         # === Feature Importance Visualizations ===
-        plot_pca_feature_loadings(pca, features, save_dir / f"pca_feature_loadings_{method_name}.png", method_name)
-        plot_cluster_feature_means(df, features, save_dir / f"cluster_feature_means_{method_name}.png", method_name)
-        plot_feature_variance(df, features, save_dir / f"feature_variance_{method_name}.png", method_name)
+        plot_pca_feature_loadings(pca, features, feat_dir / f"pca_feature_loadings_{method_name}.png", method_name)
+        plot_cluster_feature_means(df, features, feat_dir / f"cluster_feature_means_{method_name}.png", method_name)
+        plot_feature_variance(df, features, feat_dir / f"feature_variance_{method_name}.png", method_name)
 
         # === PCA Projections ===
+        # Target (td_or_asd): soft colors, dynamic title
         plot_pca_projection(
             X_pca, df, target_col,
-            save_dir / f"pca_target_projection_{method_name}.png",
-            title=f"PCA Projection colored by Target ({method_name.upper()})"
+            proj_dir / f"pca_target_projection.png"
         )
 
+        # Clusters: distinct colors, include method name in title
         plot_pca_projection(
             X_pca, df, "cluster",
-            save_dir / f"pca_{method_name}_cluster_projection.png",
-            title=f"PCA Projection colored by {method_name.upper()} Clusters"
+            proj_dir / f"pca_cluster_projection_{method_name}.png"
+        )
+
+        # === Streamlit Interactive Plots ===
+        plot_pca_projection_streamlit(
+            X_pca, df, color_col="cluster",
+            save_path=proj_dir / f"pca_cluster_projection_{method_name}.html"
+        )
+        plot_pca_projection_streamlit(
+            X_pca, df, color_col=target_col,
+            save_path=proj_dir / f"pca_target_projection_{method_name}.html"
         )
 
         # === Save Metrics ===

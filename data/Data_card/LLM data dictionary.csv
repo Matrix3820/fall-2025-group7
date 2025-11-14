@@ -1,0 +1,12 @@
+Column Name,Meaning
+sub,Participant ID
+profile,"Peer profile: TDprof_norm, ASDprof_norm, or ASDprof_unif. These represent the preference profiles of the 3 kids participants learned about. Participants will have data for at least 2 profiles."
+subject,Participant ID followed by a random code for the current profile
+td_or_asd,"Is this participant classified as TD (typically developing) or ASD? 0 = TD, 1 = ASD"
+SRS.Raw,Raw total score on the Social Responsiveness Scale (2nd edition). Higher scores indicate greater severity of autism symptoms. It is called Raw because it can also be converted into a T-score.
+FSR,Total score on the Flexibility Scale-Revised. Higher scores indicate lower flexibility/greater rigidity. 
+BIS,Total score on the Behavioral Inflexibility Scale. Higher scores indicate lower flexibility/greater rigidity. 
+avg_PE,Participant's average prediction error (PE) on each peer profile. Prediction error was calculated as the absolute difference between a participant's rating of how much they think the peer likes an item and the peer's actual liking of the item.
+free_response,Participant's free response -- what they think about the peer they just learned about.
+LPA_Profile_grand_mean,"Which cluster (1-4) was the participant assigned to based on the skewness and variance of their self preferences? (from latent profile analysis including all ASD & TD participants, skewness and variance grand mean centered)"
+LPA_Profile_ASD_only,"Which cluster (1-4) was the participant assigned to based on the skewness and variance of their self preferences? (from latent profile analysis including all ASD participants only, skewness and variance mean centered)"
