@@ -1,0 +1,24 @@
+{
+  "method": "hdbscan",
+  "n_clusters": 2,
+  "n_noise": 39,
+  "unique_labels": [
+    -1,
+    0,
+    1
+  ],
+  "tsne_params": {
+    "perplexity": 30,
+    "learning_rate": 200,
+    "n_iter": 2000
+  },
+  "hdbscan_params": {
+    "min_cluster_size": 15,
+    "min_samples": 5
+  },
+  "cluster_counts": {
+    "-1": 39,
+    "0": 755,
+    "1": 185
+  }
+}
