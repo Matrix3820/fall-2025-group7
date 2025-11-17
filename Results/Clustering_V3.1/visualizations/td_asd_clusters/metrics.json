@@ -1,0 +1,44 @@
+{
+  "method": "hdbscan",
+  "n_clusters": 12,
+  "n_noise": 247,
+  "unique_labels": [
+    -1,
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11
+  ],
+  "tsne_params": {
+    "perplexity": 30,
+    "learning_rate": 200,
+    "n_iter": 2000
+  },
+  "hdbscan_params": {
+    "min_cluster_size": 15,
+    "min_samples": 5
+  },
+  "cluster_counts": {
+    "-1": 247,
+    "0": 41,
+    "1": 77,
+    "2": 192,
+    "3": 50,
+    "4": 56,
+    "5": 17,
+    "6": 54,
+    "7": 73,
+    "8": 87,
+    "9": 23,
+    "10": 26,
+    "11": 36
+  }
+}
