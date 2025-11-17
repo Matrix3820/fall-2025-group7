@@ -137,6 +137,10 @@ def explain_local(indices: Optional[Sequence[int]] = None, num_features: int = 1
     artifacts = []
     for idx in indices:
         row = X.iloc[int(idx)]
+
+        proba = predict_fn(row.values.reshape(1, -1))[0]
+        pred_class = int(np.argmax(proba))
+
         exp = explainer.explain_instance(row.values, predict_fn, num_features=num_features)
         html_path = rd / f"lime_local_idx{idx}_{model_version}.html"
         exp.save_to_file(str(html_path))
@@ -149,7 +153,8 @@ def explain_local(indices: Optional[Sequence[int]] = None, num_features: int = 1
         fig.savefig(png_path, dpi=300, bbox_inches="tight")
         plt.close(fig)
 
-        artifacts.append({"index": int(idx), "html": str(html_path), "png": str(png_path)})
+        artifacts.append({"index": int(idx), "html": str(html_path), "png": str(png_path),"predicted_class": pred_class,
+            "prediction_proba": proba.tolist()})
     return artifacts
 
 

@@ -92,7 +92,7 @@ def explain_local(indices: Optional[Sequence[int]] = None, top_n: int = 15, rand
     explainer = shap.TreeExplainer(clf.model)
     sv = explainer.shap_values(Xs)
 
-    out = []
+    artifacts = []
     for idx in indices:
         row = Xs.iloc[int(idx)]
         shap_row = sv[int(idx)]
@@ -108,9 +108,9 @@ def explain_local(indices: Optional[Sequence[int]] = None, top_n: int = 15, rand
         plt.savefig(png_path, dpi=300, bbox_inches="tight")
         plt.close()
 
-        out.append({"index": int(idx), "plot": str(png_path), "base_value": base_value})
+        artifacts.append({"index": int(idx), "plot": str(png_path), "base_value": base_value, "shap_vals":shap_row})
 
-    return out
+    return artifacts
 
 
 if __name__ == "__main__":
