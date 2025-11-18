@@ -12,6 +12,8 @@ import plotly.express as px
 from importlib import import_module
 import plotly.figure_factory as ff
 
+
+
 # ----- App / Layout -----
 st.set_page_config(
     page_title="TD/ASD Classification - Demo",
@@ -29,6 +31,16 @@ DATA_ROOT = PROJECT_ROOT / "data"
 SRC_ROOT = PROJECT_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
+
+# ----- Imports for clustering page -----
+import streamlit.components.v1 as components
+
+from Clustering.general_clustering_model import (
+    GeneralClusterAnalyzer,NLP_FEATURES,
+    DATA_VERSION as CLUSTER_DATA_VERSION,
+)
+
+from Clustering.data_preprocessor import preprocess_clustering_data
 
 # print(PROJECT_ROOT)
 # print(RESULTS_ROOT)
@@ -181,10 +193,10 @@ if "page" not in st.session_state:
     st.session_state.page = "home"
 
 if "model_version" not in st.session_state:
-    st.session_state.model_version = "V7.1"
+    st.session_state.model_version = "V7-1"
 
 if "data_version" not in st.session_state:
-    st.session_state.data_version = "DATA_V7.1"
+    st.session_state.data_version = "DATA_V7-1"
 
 if "available_models" not in st.session_state:
     st.session_state.available_models = _discover_models()
@@ -528,6 +540,41 @@ class DemoApp:
                             -  
                             """)
 
+            # --- Model V7-1 ---
+            with st.expander("Model V7-1", expanded=False):
+                st.write("""
+                            - Base Dataset : Data V3 
+                            - Features Used : FSR + PE + Concept Learning + NLP Features
+                            - Train-Test Split : 80-20 Stratified 5-Fold CV
+                            - Model : XGBOOST
+                            - Metric Maximized : Accuracy
+                            - Hyperparameters : *Need to be Filled in*
+                            - Intuition/Reasoning for Model - Developed New Concept Features to Replace Previous Slope Calculation
+                            """)
+
+            # --- Model V7-2 ---
+            with st.expander("Model V7-2", expanded=False):
+                st.write("""
+                            - Base Dataset : Data V3 
+                            - Features Used : FSR + PE + Concept Learning + NLP Features
+                            - Train-Test Split : FSR Overlap Region as Test Set
+                            - Model : XGBOOST
+                            - Metric Maximized : Accuracy
+                            - Hyperparameters : *Need to be Filled in*
+                            - Intuition/Reasoning for Model - Developed New Concept Features to Replace Previous Slope Calculation
+                            """)
+
+            # --- Model V7-3 ---
+            with st.expander("Model V7-3", expanded=False):
+                st.write("""
+                            - Base Dataset : Data V3 
+                            - Features Used : FSR + PE + Concept Learning + NLP Features
+                            - Train-Test Split : FSR Overlap Region as Train Set
+                            - Model : XGBOOST
+                            - Metric Maximized : Accuracy
+                            - Hyperparameters : *Need to be Filled in*
+                            - Intuition/Reasoning for Model - Developed New Concept Features to Replace Previous Slope Calculation
+                            """)
 
     def show_eda_page(self):
         st.header("📊 Explanatory Data Analysis")
@@ -873,17 +920,108 @@ class DemoApp:
 
         tab1, tab2, = st.tabs(["LIME", "SHAP"])
 
+        def build_lime_explanation_text(result, top_k=7):
+
+            pred = result["predicted_class"]
+            proba = result["prediction_proba"]
+
+            cls_name = "ASD" if pred == 1 else "TD"
+            cls_proba = proba[pred]
+            other_proba = proba[1 - pred]
+            other_cls = "TD" if pred == 1 else "ASD"
+
+            weights = result["weights"]
+
+            # Sort weights by absolute influence
+            top = sorted(weights, key=lambda x: abs(x[1]), reverse=True)[:top_k]
+
+            positives = [(f, w) for f, w in top if w > 0]
+            negatives = [(f, w) for f, w in top if w < 0]
+
+            txt_pos = "\n".join([f"- **{f}** (+{w:.3f})" for f, w in positives]) or "*None*"
+            txt_neg = "\n".join([f"- **{f}** ({w:.3f})" for f, w in negatives]) or "*None*"
+
+            return f"""
+        # 📘 Local Explanation Summary
+
+         \n- *Prediction:* *{cls_name}* 
+         \n- *Confidence:* {cls_proba:.2f}  
+         
+        \n### Features pushing **toward {cls_name}**
+        \n{txt_pos}
+
+        \n### Features pushing **away from {cls_name}**
+        \n{txt_neg}
+
+        \n### 💡 How to read the plot
+        - Orange bars push the prediction toward ASD  
+        - Blue bars push the prediction toward TD  
+        - The longer the bar, the stronger the influence  
+        - Each feature label contains the bin/interval your value falls into  
+        - LIME explains a single prediction by approximating the model locally with a simple linear model  
+            """
+
+        def build_shap_explanation_text(result, top_k=5):
+            pred = result["predicted_class"]
+            proba = result["prediction_proba"]
+            shap_vals = np.array(result["shap_values"])
+            feature_vals = result["feature_values"]
+            base_value = result["base_value"]
+
+            cls_name = "ASD" if pred == 1 else "TD"
+            other_cls = "TD" if pred == 1 else "ASD"
+            cls_proba = proba[pred]
+            other_proba = proba[1 - pred]
+
+            # Sort top-k contributions
+            indices = np.argsort(np.abs(shap_vals))[::-1][:top_k]
+            top_feats = [(list(feature_vals.keys())[i], shap_vals[i]) for i in indices]
+
+            pos = [(f, v) for f, v in top_feats if v > 0]
+            neg = [(f, v) for f, v in top_feats if v < 0]
+
+            txt_pos = "\n".join([f"- **{f}** (+{v:.3f})" for f, v in pos]) or "*None*"
+            txt_neg = "\n".join([f"- **{f}** ({v:.3f})" for f, v in neg]) or "*None*"
+
+            return f"""
+            \n# 📘 SHAP Local Explanation Summary (Row {result['index']})
+            \n*Prediction: {cls_name}  
+            \n*Confidence: `{cls_proba:.2f}`  
+            
+            \n### Features pushing **toward ASD**
+            \nThese features *increased* the model's confidence in Selecting ASD Label:
+            \n{txt_pos}
+ 
+            
+            \n### Features pushing **toward TD**
+            \nThese features pulled the prediction *away* from the ASD Label:
+            \n{txt_neg}
+            
+            ---
+            
+            \n### 📘 How to interpret this SHAP plot
+            
+            \n- **Longer bars = stronger influence**
+            \n- **Blue bars**: push prediction **toward TD**
+            \n- **Red bars**: push prediction **toward ASD**
+            \n- The SHAP waterfall plot visualizes how the model moved from the baseline
+                prediction *E[f(x)] = {base_value:.3f}* to the final output *f(x)* by
+                adding positive and negative feature contributions.
+            \n- The final score is then converted into class probabilities `{proba}`
+            
+        """
+
         with tab1:
             # ---- Dynamic import of explainers ----
             try:
                 model_folder = f"Model_{self.model_version}"
-                module_name = "lime_explain"
-                full_module_path = f"{model_folder}.{module_name}"
+                lime_module_name = "lime_explain"
+                full_module_path = f"{model_folder}.{lime_module_name}"
 
-                expl = import_module(full_module_path)
+                lime_expl = import_module(full_module_path)
                 st.success(f"Loaded {full_module_path}")
             except Exception as e:
-                st.error(f"❌ Could not import {module_name}.py for model {self.model_version}")
+                st.error(f"❌ Could not import {lime_module_name}.py for model {self.model_version}")
                 st.info(f"Tried path: {full_module_path.replace('.', '/')}.py")
                 st.exception(e)
                 return
@@ -894,7 +1032,7 @@ class DemoApp:
                     """)
 
                 with st.spinner(f"Running global explainability..."):
-                    results = expl.explain_global()
+                    results = lime_expl.explain_global()
                 st.success("Global explainability generated.")
                 for output in results.get("outputs", []):
                     if output.endswith(".png"):
@@ -915,31 +1053,68 @@ class DemoApp:
                 train_data = pd.read_csv(train_data_path)
                 test_data = pd.read_csv(test_data_path)
 
-                overall_data = pd.concat([train_data, test_data])
-                overall_data.reset_index(inplace=True)
+                data_selector = st.radio(
+                    "Select Data Source",
+                    [
+                        "Train",
+                        "Test",
+                    ],
+                    index=1,
+                    horizontal=True,
+                )
+
+                # overall_data = pd.concat([train_data, test_data])
+                # overall_data.reset_index(inplace=True)
                 # st.dataframe(overall_data.head(10))
 
+                if data_selector == "Train":
+                    overall_data = train_data
+                else:
+                    overall_data = test_data
+
+
                 row_idx = st.number_input("Select a row index to explain", min_value=0, max_value=overall_data.shape[0], step=1, value=0, key="LIME_local_select")
-                st.dataframe(overall_data.iloc[row_idx])
 
-                with st.spinner(f"Running Local Explainability..."):
-                    results = expl.explain_local(indices=[row_idx])
-                    st.success("Local Explainability generated.")
+                with st.expander("View Selected Index", expanded=False):
+                    st.dataframe(overall_data.iloc[row_idx])
+                if st.button("🚀 Run Lime Local Explainability"):
+                    with st.spinner(f"Running Local Explainability..."):
+                        if data_selector == "Train":
+                            results = lime_expl.explain_local(indices=[row_idx])
+                        else:
+                            results = lime_expl.explain_local(indices=[row_idx],dataset='test')
+                        st.success("Local Explainability generated.")
 
-                res = results[0]
-                st.image(res["png"], caption=f" Lime Local Plot (Row {row_idx})")
+                    res = results[0]
+                    # print(res)
+                    # st.image(res["png"], caption=f" Lime Local Plot (Row {row_idx})")
+                    with open(res["html"], "r", encoding="utf-8") as f:
+                        html = f.read()
+                        html = html.replace("background-color: black", "background-color: white")
+                        html = html.replace("color: black", "color: white")
+                    override = """
+                    <style>
+                    body { background-color: white !important; color: black !important; }
+                    div, span, p { color: black !important; }
+                    svg text { fill: black !important; }
+                    </style>
+                    """
+                    components.html(override +html, height=600)
+
+                    explanation = build_lime_explanation_text(res)
+                    st.markdown(explanation)
 
         with tab2:
             # ---- Dynamic import of explainers ----
             try:
                 model_folder = f"Model_{self.model_version}"
-                module_name = "shap_explain"
-                full_module_path = f"{model_folder}.{module_name}"
+                shap_module_name = "shap_explain"
+                full_module_path = f"{model_folder}.{shap_module_name}"
 
-                expl = import_module(full_module_path)
+                shap_expl = import_module(full_module_path)
                 st.success(f"Loaded {full_module_path}")
             except Exception as e:
-                st.error(f"❌ Could not import {module_name}.py for model {self.model_version}")
+                st.error(f"❌ Could not import {shap_module_name}.py for model {self.model_version}")
                 st.info(f"Tried path: {full_module_path.replace('.', '/')}.py")
                 st.exception(e)
                 return
@@ -950,7 +1125,7 @@ class DemoApp:
                     """)
 
                 with st.spinner(f"Running global explainability..."):
-                    results = expl.explain_global()
+                    results = shap_expl.explain_global()
                 st.success("Global explainability generated.")
                 for output in results.get("outputs", []):
                     if output.endswith(".png"):
@@ -971,32 +1146,290 @@ class DemoApp:
                 train_data = pd.read_csv(train_data_path)
                 test_data = pd.read_csv(test_data_path)
 
-                overall_data = pd.concat([train_data, test_data])
-                overall_data.reset_index(inplace=True)
+                data_selector2 = st.radio(
+                    "Select a Data Source",
+                    [
+                        "Train",
+                        "Test",
+                    ],
+                    index=1,
+                    horizontal=True,
+                )
+
+                # overall_data = pd.concat([train_data, test_data])
+                # overall_data.reset_index(inplace=True)
                 # st.dataframe(overall_data.head(10))
+
+                if data_selector2 == "Train":
+                    overall_data = train_data
+                else:
+                    overall_data = test_data
 
                 row_idx = st.number_input("Select a row index to explain", min_value=0, max_value=overall_data.shape[0],
                                           step=1, value=0, key='SHAP_local_select')
 
                 with st.expander("View Selected Index", expanded=False):
                     st.dataframe(overall_data.iloc[row_idx])
+                if st.button("🚀 Run SHAP Local Explainability"):
+                    with st.spinner(f"Running Local Explainability..."):
+                        if data_selector == "Train":
+                            results = shap_expl.explain_local(indices=[row_idx],top_n=7)
+                        else:
+                            results = shap_expl.explain_local(indices=[row_idx],top_n=7, dataset='test')
+                        st.success("Local Explainability generated.")
 
-                with st.spinner(f"Running Local Explainability..."):
-                    results = expl.explain_local(indices=[row_idx],top_n=7)
-                    st.success("Local Explainability generated.")
 
-                with st.expander("View Index Plot", expanded=False):
                     res = results[0]
                     st.image(res["plot"], caption=f" SHAP Local Plot (Row {row_idx})")
+                    explanation = build_shap_explanation_text(res)
+                    st.markdown(explanation)
 
-                    st.markdown(f""" 
-                                    - **Base value:** `{res.get('base_value', 0):.3f}`
-                                """)
+
 
     def show_cluster_analysis_page(self):
-        st.header("🧩 Cluster Analysis")
+        st.header("Cluster Analysis 🧩")
+        st.caption("Unified UI for PCA+KMeans, PCA+GMM, and t-SNE+HDBSCAN")
 
+        # ------------------------------
+        # 1) Method selection
+        # ------------------------------
+        method_label = st.selectbox(
+            "Clustering method",
+            [
+                "PCA + KMeans (V1)",
+                "PCA + GMM (V2)",
+                "t-SNE + HDBSCAN (V3)",
+            ],
+            index=2,
+        )
 
+        method_map = {
+            "PCA + KMeans (V1)": "pca_kmeans",
+            "PCA + GMM (V2)": "pca_gmm",
+            "t-SNE + HDBSCAN (V3)": "tsne_hdbscan",
+        }
+        model_type = method_map[method_label]
+
+        # ------------------------------
+        # 2) Feature set selection
+        # ------------------------------
+        feature_label = st.radio(
+            "Feature set for clustering",
+            [
+                "7 Numeric (scaled)",
+                "5 Numeric (scaled)",
+                "5 Numeric (scaled) + NLP",
+                "Without FSR (4 numeric_scaled + NLP)",
+                "Custom feature subset",
+            ],
+            index=2,
+            horizontal=True,
+        )
+
+        feature_map = {
+            "7 Numeric (scaled)": "all_numeric",
+            "5 Numeric (scaled)": "5_numeric",
+            "5 Numeric (scaled) + NLP": "5_numeric_nlp",
+            "Without FSR (4 numeric_scaled + NLP)": "4_numeric_nlp",
+            "Custom feature subset": "custom",
+        }
+        feature_mode = feature_map[feature_label]
+
+        custom_features: list[str] | None = None
+
+        # ------------------------------
+        # 2a) Custom feature UI
+        # ------------------------------
+        if feature_mode == "custom":
+            st.markdown("### Custom features")
+            st.markdown("##### Scaled Numeric features")
+            st.info(
+                "Select which **scaled numeric** features to include. "
+                "You can optionally add the full NLP feature block."
+            )
+
+            numeric_feature_defs = [
+                ("FSR_scaled", "FSR_scaled"),
+                ("BIS_scaled", "BIS_scaled"),
+                ("SRS.Raw_scaled", "SRS.Raw_scaled"),
+                ("TDNorm_avg_PE_scaled", "TDNorm_avg_PE_scaled"),
+                ("overall_avg_PE_scaled", "overall_avg_PE_scaled"),
+                ("TDnorm_concept_learning_scaled", "TDnorm_concept_learning_scaled"),
+                ("overall_concept_learning_scaled", "overall_concept_learning_scaled"),
+            ]
+
+            selected_numeric = []
+            cols = st.columns(3)
+            for i, (col_name, label) in enumerate(numeric_feature_defs):
+                with cols[i % 3]:
+                    checked = st.checkbox(
+                        label,
+                        value=True,
+                        key=f"cust_num_{col_name}",
+                    )
+                    if checked:
+                        selected_numeric.append(col_name)
+
+            st.markdown("---")
+            st.markdown("##### NLP features")
+
+            include_nlp = st.checkbox(
+                "Include NLP features",
+                value=True,
+                help=(
+                    "If checked, the following features are added:\n "
+                    "word_count, sentence_count, char_count, avg_word_length, "
+                    "avg_sentence_length, shortness_score, lexical_diversity, "
+                    "sentiment_polarity, sentiment_subjectivity, positive_word_count, "
+                    "negative_word_count, positive_word_ratio, negative_word_ratio, "
+                    "flesch_reading_ease, flesch_kincaid_grade."
+                ),
+            )
+
+            custom_features = selected_numeric.copy()
+            if include_nlp:
+                custom_features += NLP_FEATURES
+
+            if not custom_features:
+                st.warning("No features selected yet – clustering will fail. Make sure to pick at least one.")
+
+            st.caption(
+                f"Custom feature subset selected (`feature_mode='custom'`). "
+                f"Total features: **{len(custom_features)}**"
+            )
+
+        # ------------------------------
+        # 3) Run ID
+        # ------------------------------
+        run_id = st.text_input(
+            "Run ID (used as suffix for saving results)",
+            value="ui",
+            help="If you change this, a new subfolder will be created in Results/Clustering/general/",
+        )
+
+        st.markdown("---")
+
+        if "cluster_base_dir" not in st.session_state:
+            st.session_state.cluster_base_dir = ""
+
+        # ------------------------------
+        # 4) Run button
+        # ------------------------------
+        if st.button("🚀 Run clustering"):
+            with st.spinner("Running clustering pipeline... this may take a few minutes."):
+                # 1) Load preprocessed data (or create it)
+                preprocessed_path = (
+                        PROJECT_ROOT
+                        / "data"
+                        / CLUSTER_DATA_VERSION
+                        / "data_preprocessed_clustering.csv"
+                )
+
+                if preprocessed_path.exists():
+                    df = pd.read_csv(preprocessed_path)
+                    print(f"Loaded preprocessed clustering data from {preprocessed_path}")
+                else:
+                    df = preprocess_clustering_data(PROJECT_ROOT)
+
+                # 2) Run analyzer
+                analyzer = GeneralClusterAnalyzer(
+                    project_root=PROJECT_ROOT,
+                    model_type=model_type,
+                    feature_mode=feature_mode,
+                    run_id=run_id,
+                    custom_features=custom_features,  # None unless feature_mode == "custom"
+                )
+                analyzer.run_pipeline(df)
+
+                # 3) Remember where results were written
+                base_name = f"{model_type}_{feature_mode}_{run_id}"
+                base_dir = (
+                        PROJECT_ROOT
+                        / "Results"
+                        / "Clustering"
+                        / "general"
+                        / base_name
+                )
+                st.session_state.cluster_base_dir = str(base_dir)
+
+            st.success(f"✅ Clustering completed and saved under:\n`{base_dir}`")
+
+        # ------------------------------
+        # 5) Show visuals from last run
+        # ------------------------------
+        base_dir_str = st.session_state.get("cluster_base_dir", "")
+        if not base_dir_str:
+            st.info("Run clustering above to see visualizations.")
+            return
+
+        base_dir = Path(base_dir_str)
+        td_asd_proj_dir = base_dir / "td_asd_clusters" / "projections"
+        asd_proj_dir = base_dir / "asd_subclusters" / "projections"
+
+        if not td_asd_proj_dir.exists():
+            st.warning(f"Projections directory not found: {td_asd_proj_dir}")
+            return
+
+        tab_all, tab_asd = st.tabs(
+            ["All Participants (TD + ASD)", "ASD-only Participants (ASD Subclusters)"]
+        )
+
+        explorer_file_map = {
+            "pca_kmeans": "pca_cluster_explorer_kmeans.html",
+            "pca_gmm": "pca_cluster_explorer_gmm.html",
+            "tsne_hdbscan": "tsne_cluster_explorer_hdbscan.html",
+        }
+
+        # interactive target projection HTML filenames
+        target_html_map = {
+            "pca_kmeans": "pca_target_projection_kmeans.html",
+            "pca_gmm": "pca_target_projection_gmm.html",
+            "tsne_hdbscan": "tsne_target_projection.html",
+        }
+
+        # (optional) static PNG fallback
+        target_png_map = {
+            "pca_kmeans": "pca_target_projection_kmeans.png",
+            "pca_gmm": "pca_target_projection_gmm.png",
+            "tsne_hdbscan": "tsne_target_projection.png",
+        }
+
+        def render_cluster_tab(proj_dir: Path, context_label: str):
+            st.subheader(f"Cluster Explorer — {context_label}")
+            explorer_file = proj_dir / explorer_file_map[model_type]
+            if explorer_file.exists():
+                html_str = explorer_file.read_text(encoding="utf-8")
+                components.html(html_str, height=650, scrolling=True)
+            else:
+                st.info(f"Explorer file not found: `{explorer_file.name}`")
+
+            st.markdown("---")
+            st.subheader(f"Target Projection (TD vs ASD) — {context_label}")
+
+            # --- interactive target projection (preferred) ---
+            target_html = proj_dir / target_html_map[model_type]
+            if target_html.exists():
+                html_str = target_html.read_text(encoding="utf-8")
+                components.html(html_str, height=600, scrolling=True, width=1200)
+            else:
+                # Fallback: static PNG if HTML is missing
+                target_png = proj_dir / target_png_map[model_type]
+                if target_png.exists():
+                    st.image(str(target_png), use_container_width=True)
+                else:
+                    st.info(
+                        f"Target projection file not found: "
+                        f"`{target_html.name}` or `{target_png.name}`"
+                    )
+
+        with tab_all:
+            render_cluster_tab(td_asd_proj_dir, "All Participants")
+
+        with tab_asd:
+            if asd_proj_dir.exists():
+                render_cluster_tab(asd_proj_dir, "ASD-only")
+            else:
+                st.info("No ASD-only subclustering folder found (maybe no ASD rows).")
 
 def main():
     app = DemoApp()

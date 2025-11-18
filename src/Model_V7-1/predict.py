@@ -6,10 +6,10 @@ import os
 import json
 from pathlib import Path
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report, roc_auc_score
-from xgboost_model import XGBoostClassifier
-from data_preprocessor import preprocess_prediction_data
-from explainability_analysis import run_explainability_analysis
-from visualization import create_visualizations
+from .xgboost_model import XGBoostClassifier
+from .data_preprocessor import preprocess_prediction_data
+from .explainability_analysis import run_explainability_analysis
+from .visualization import create_visualizations
 
 data_version = "Data_v7-1"
 model_version = "V7-1"

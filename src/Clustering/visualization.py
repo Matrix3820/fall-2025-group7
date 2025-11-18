@@ -425,8 +425,9 @@ def plot_pca_cluster_explorer(X_pca, df, numeric_cols, save_path, method_name="k
         xaxis=dict(title="Principal Component 1", domain=[0.0, 0.65]),
         yaxis=dict(title="Principal Component 2"),
         hovermode="closest",
-        width=950,
-        height=600,
+        # width=950,
+        # height=600,
+        autosize=True,
         margin=dict(l=60, r=230, t=60, b=60),
         legend=dict(
             title=dict(text="Clusters"),
@@ -735,18 +736,40 @@ def plot_tsne_cluster_explorer(X_tsne, df, numeric_cols, save_path):
     first_cluster = clusters[0]
     first_key = str(first_cluster)
 
+    # fig.update_layout(
+    #     title="2D Representation of HDBSCAN Clusters",
+    #     xaxis=dict(title="t-SNE Dimension 1", domain=[0.0, 0.65]),
+    #     yaxis=dict(title="t-SNE Dimension 2"),
+    #     hovermode="closest",
+    #     width=950,
+    #     height=600,
+    #     margin=dict(l=60, r=230, t=60, b=60),
+    #     legend=dict(
+    #         title=dict(text="Clusters"),
+    #         x=0.66,   # inside middle column [0.60–0.75]
+    #         y=0.98,
+    #         xanchor="left",
+    #         yanchor="top",
+    #         bgcolor="rgba(255,255,255,0.85)",
+    #         bordercolor="lightgray",
+    #         borderwidth=1,
+    #         font=dict(size=11),
+    #     ),
+    # )
+
     fig.update_layout(
         title="2D Representation of HDBSCAN Clusters",
-        xaxis=dict(title="t-SNE Dimension 1", domain=[0.0, 0.65]),
+        xaxis=dict(title="t-SNE Dimension 1"),
         yaxis=dict(title="t-SNE Dimension 2"),
         hovermode="closest",
-        width=950,
-        height=600,
-        margin=dict(l=60, r=230, t=60, b=60),
+        # width=950,
+        # height=600,
+        autosize=True,
+        margin=dict(l=60, r=220, t=60, b=60),
         legend=dict(
             title=dict(text="Clusters"),
-            x=0.66,   # inside middle column [0.60–0.75]
-            y=0.98,
+            x=1.02,
+            y=1,
             xanchor="left",
             yanchor="top",
             bgcolor="rgba(255,255,255,0.85)",

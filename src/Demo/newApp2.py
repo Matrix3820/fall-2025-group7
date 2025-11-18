@@ -847,8 +847,6 @@ class DemoApp:
             with tab_map[version_name]:
                 render_eda_for_version(version_name, file_path)
 
-
-
     def show_results_page(self):
         st.header(f"🧮 Results — {self.model_version}")
         st.caption(f"Reading from: `Results/{self.model_version}`")

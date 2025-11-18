@@ -8,6 +8,7 @@ from lime.lime_tabular import LimeTabularExplainer
 import matplotlib.pyplot as plt
 
 from .xgboost_model import XGBoostClassifier
+from .predict import ModelPredictor
 
 data_version = "Data_v7-2"
 model_version = "V7-2"
@@ -26,14 +27,14 @@ def _load_model_and_data():
     clf.load_model()
     df = clf.load_data()
     X, y = clf.prepare_features(df)
+    predictor = ModelPredictor()
 
-    # LIME wants raw features; we wrap predict_proba to apply scaling inside
     def predict_proba_raw(Xraw: np.ndarray) -> np.ndarray:
         Xdf = pd.DataFrame(Xraw, columns=clf.feature_names)
         Xscaled = clf.scaler.transform(Xdf)
         return clf.model.predict_proba(Xscaled)
 
-    return clf, X, y, predict_proba_raw
+    return clf, X, y, predict_proba_raw, predictor
 
 
 def _positive_class_index(model) -> int:
@@ -62,7 +63,7 @@ def explain_global(
       - top-N bar chart (PNG)
     """
     rd = _results_dir()
-    clf, X, y, predict_fn = _load_model_and_data()
+    clf, X, y, predict_fn, _ = _load_model_and_data()
 
     if len(X) > num_samples:
         Xs = X.sample(num_samples, random_state=random_state)
@@ -113,13 +114,25 @@ def explain_global(
     return {"outputs": [str(out_json), str(out_png)]}
 
 
-def explain_local(indices: Optional[Sequence[int]] = None, num_features: int = 15, random_state: int = 0):
+def explain_local(indices: Optional[Sequence[int]] = None, num_features: int = 15, random_state: int = 0, dataset: str = "train", df = False):
     """
     Generate per-instance LIME HTML explanations (and quick PNG dumps).
     Returns list of artifacts per index.
     """
     rd = _results_dir()
-    clf, X, y, predict_fn = _load_model_and_data()
+    clf, X, y, predict_fn, predictor = _load_model_and_data()
+    X_ = X
+
+    if dataset == "test":
+        if not df:
+            print("here")
+            X_ = predictor.preprocess_new_data(df,True)
+            X_, y = clf.prepare_features(X_)
+        else:
+            print("there")
+            X_ = predictor.preprocess_new_data(df,False)
+            X_, y = clf.prepare_features(X_)
+
 
     if indices is None:
         rng = np.random.default_rng(random_state)
@@ -136,9 +149,10 @@ def explain_local(indices: Optional[Sequence[int]] = None, num_features: int = 1
 
     artifacts = []
     for idx in indices:
-        row = X.iloc[int(idx)]
-
-        proba = predict_fn(row.values.reshape(1, -1))[0]
+        row = X_.iloc[int(idx)]
+        row_df = pd.DataFrame([row], columns=X.columns)
+        X_scaled = clf.scaler.transform(row_df)
+        proba = clf.model.predict_proba(X_scaled)[0]
         pred_class = int(np.argmax(proba))
 
         exp = explainer.explain_instance(row.values, predict_fn, num_features=num_features)
@@ -153,8 +167,8 @@ def explain_local(indices: Optional[Sequence[int]] = None, num_features: int = 1
         fig.savefig(png_path, dpi=300, bbox_inches="tight")
         plt.close(fig)
 
-        artifacts.append({"index": int(idx), "html": str(html_path), "png": str(png_path),"predicted_class": pred_class,
-            "prediction_proba": proba.tolist()})
+        artifacts.append({"index": int(idx), "html": str(html_path), "png": str(png_path), "predicted_class": pred_class,
+            "prediction_proba": proba.tolist(), "weights": exp.as_list()})
     return artifacts
 
 
