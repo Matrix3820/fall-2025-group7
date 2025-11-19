@@ -11,8 +11,7 @@ from PIL import Image
 import plotly.express as px
 from importlib import import_module
 import plotly.figure_factory as ff
-
-
+import streamlit.components.v1 as components
 
 # ----- App / Layout -----
 st.set_page_config(
@@ -27,26 +26,22 @@ CURRENT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = CURRENT_DIR.parent.parent
 RESULTS_ROOT = PROJECT_ROOT / "Results"
 DATA_ROOT = PROJECT_ROOT / "data"
+
 # Ensure Root/src is on sys.path so Model_V1, Model_V2, etc. can be imported
 SRC_ROOT = CURRENT_DIR.parent
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 # ----- Imports for clustering page -----
-import streamlit.components.v1 as components
-
 from Clustering.general_clustering_model import (
-    GeneralClusterAnalyzer,NLP_FEATURES,
+    GeneralClusterAnalyzer,
+    NLP_FEATURES,
     DATA_VERSION as CLUSTER_DATA_VERSION,
 )
-
 from Clustering.data_preprocessor import preprocess_clustering_data
 
 
-
-MODEL_OVERVIEW_MD = \
-    {
-
+MODEL_OVERVIEW_MD = {
     "V1": """
 ## Model Overview (V1)
 
@@ -146,9 +141,11 @@ MODEL_INFO = {
     "V5": "Production-ready model with calibrated thresholds and drift detection."
 }
 
+
 def get_model_info(version: str) -> str:
     """Return sidebar caption text for a given model version."""
     return MODEL_INFO.get(version, "Experimental TD/ASD model.")
+
 
 def _discover_models() -> list[str]:
     """Return available model versions by scanning Results/* that look like V{number}."""
@@ -160,6 +157,7 @@ def _discover_models() -> list[str]:
             versions.append(p.name.upper())
     return versions or ["V1", "V2", "V3", "V4", "V5"]
 
+
 def _discover_culstering_models() -> list[str]:
     """Return available clustering model versions by scanning Results/* that look like Clustering_V{number}."""
     if not RESULTS_ROOT.exists():
@@ -170,10 +168,11 @@ def _discover_culstering_models() -> list[str]:
             versions.append(p.name.upper())
     return versions or ["Clustering_V1", "Clustering_V2"]
 
+
 def _discover_datasets() -> list[str]:
     """Return available datasets by scanning data/* that look like Data_v{number}."""
     if not DATA_ROOT.exists():
-        return ["V1", "V2", "V3",]
+        return ["V1", "V2", "V3"]
     versions = []
     for p in sorted(DATA_ROOT.iterdir()):
         if p.is_dir() and p.name.upper().startswith("DATA_V"):
@@ -184,6 +183,7 @@ def _discover_datasets() -> list[str]:
 def get_overview_md(version: str) -> str:
     """Return Model MD Card based on Model Version Selection."""
     return MODEL_OVERVIEW_MD.get(version, MODEL_OVERVIEW_MD["V1"])
+
 
 # Initialize session state and model selection
 if "page" not in st.session_state:
@@ -200,6 +200,7 @@ if "available_models" not in st.session_state:
 
 if "available_datasets" not in st.session_state:
     st.session_state.available_datasets = _discover_datasets()
+
 
 class DemoApp:
     def __init__(self):
@@ -225,10 +226,8 @@ class DemoApp:
         st.session_state.data_version = version
         self.data_dir = DATA_ROOT / self.data_version
 
-
     # ----- Data / Model loading  -----
     def load_results(self) -> bool:
-
         try:
             version = self.model_version
             explainability_path = self.results_dir / f'explainability_analysis_{version}.json'
@@ -244,7 +243,7 @@ class DemoApp:
             try:
                 with open(test_results_path, 'r') as f:
                     self.test_results = json.load(f)
-            except:
+            except Exception:
                 self.test_results = None
 
             return True
@@ -257,28 +256,21 @@ class DemoApp:
                 st.error(f"Files in directory: {list(self.results_dir.glob('*.json'))}")
             return False
 
-
-
     def initialize_predictor(self):
         # Load model + artifacts for the selected version here
-
         return
 
     # ----- Pages -----
     def show_home_page(self):
-        st.header(f"🏠 About the Project")
-
-        # =======================
-        # Project Overview
-        # =======================
+        st.header("🏠 About the Project")
 
         st.markdown("""
             ### Project Overview
             This project aims to investigate how **interpretable,
             multi-modal machine learning models** can enhance the
-            diagnosis and understand of **Autism Spectrum Disorder
+            diagnosis and understanding of **Autism Spectrum Disorder
             (ASD)**. By integrating **behavioral** and **linguistic
-            data**, the study aims to move beyond traditional, subjective,
+            data**, the study aims to move beyond traditional, subjective
             assessments toward more objective, data-driven approaches.
             The proposed models seek to improve **diagnosis precision**
             by identifying subtle patterns across multiple data types, enable
@@ -289,11 +281,7 @@ class DemoApp:
             ASD prediction and analysis.
 
             ---
-            """)
-
-        # ==========================================
-        # 🎯 Key Objectives | 🧰 Tools & Techniques
-        # ==========================================
+        """)
 
         col1, col2 = st.columns(2)
 
@@ -317,22 +305,18 @@ class DemoApp:
             - **Explainability Method:** SHAP, LIME
             """)
 
-        # =======================
-        # 🧭 App Navigation Guide
-        # =======================
         st.markdown("---")
         st.subheader("🧭 App Navigation Guide")
 
         st.markdown("""
         Use the tabs on the left to explore different parts of the project:
 
-        - **🏠 Home** – Project overview, Key objectives, Tools and techniques
-        - **📈 Data & Model** – Data versions, Data dictionary, Models selection
-        - **📊 EDA** - Exploratory Data Analysis for the chosen features
-        - **🧮 Model Results** – Train accuracy, Test accuracy, Confusion matrix, F1-scores
+        - **🏠 Home** – Project overview, key objectives, tools and techniques  
+        - **📈 Data & Model** – Data versions, data dictionary, models selection  
+        - **📊 EDA** – Exploratory Data Analysis for the chosen features  
+        - **🧮 Model Results** – Train accuracy, test accuracy, confusion matrix, F1-scores  
         - **🧩 Cluster Analysis** – Unsupervised clustering (KMeans, GMM, HDBSCAN) and ASD subtype discovery  
         - **🔍 xAI - Explainability** – SHAP / LIME explanations for model predictions and important features
-    
         """)
 
     def show_model_and_data_page(self):
@@ -349,28 +333,28 @@ class DemoApp:
 
         tab1, tab2 = st.tabs(["📂 Data Card", "🧮 Model Card"])
 
-
+        # -------------------------
+        # Data card
+        # -------------------------
         with tab1:
-            # ---- Data selector ----
             st.markdown("## Data Overview")
 
             st.markdown("""
             The data is provided by The George Washington University - Department of Psychological 
-            & Brain Sciences. There are 1,119 participants in this data aging from 8 to 12 years old.
+            & Brain Sciences. There are 1,119 participants in this dataset, aged from 8 to 12 years.
             """)
 
-            # File paths
             current_dir = Path(__file__).resolve().parent
             project_root = current_dir.parent.parent
+            data_card_dir = project_root / "data" / "Data_card"
 
-            dict_v1_path = project_root / "data" / "Data_card" / "LLM data_trial_dictionary.csv"
-            dict_v2_path = project_root / "data" / "Data_card" / "LLM data dictionary.csv"
-            dict_v3_path = project_root / "data" / "Data_card" / "LLM data_aggregate_dictionary.csv"
+            dict_v1_path = data_card_dir / "LLM data_trial_dictionary.csv"
+            dict_v2_path = data_card_dir / "LLM data dictionary.csv"
+            dict_v3_path = data_card_dir / "LLM data_aggregate_dictionary.csv"
 
-            data_v1_path = project_root / "data" / "Data_card" / "LLM data_trial.csv"
-            data_v2_path = project_root / "data" / "Data_card" / "LLM data.csv"
-            data_v3_path = project_root / "data" / "Data_card" / "LLM data_aggregate.csv"
-
+            data_v1_path = data_card_dir / "LLM data_trial.csv"
+            data_v2_path = data_card_dir / "LLM data.csv"
+            data_v3_path = data_card_dir / "LLM data_aggregate.csv"
 
             # --- Data V1 ---
             with st.expander("Data V1: Raw Trial-Level Data", expanded=False):
@@ -378,9 +362,8 @@ class DemoApp:
                     - 187,187 observations  
                     - 19 variables  
                     - Contains raw data at the trial level for all participants  
-                    """)
+                """)
 
-                # Data dictionary for V1
                 st.markdown("#### Data Dictionary – Data V1")
                 if not dict_v1_path.exists():
                     st.error("❌ Data V1 dictionary file not found.")
@@ -391,7 +374,6 @@ class DemoApp:
                     except Exception as e:
                         st.warning(f"⚠️ Could not load Data V1 dictionary: {e}")
 
-                # Data V1 Preview
                 st.markdown("#### Data Preview")
                 if not data_v1_path.exists():
                     st.error("❌ Data V1 file not found. Check the path or file name.")
@@ -402,7 +384,6 @@ class DemoApp:
                     except Exception as e:
                         st.warning(f"⚠️ Could not load Data V1: {e}")
 
-                    # Buttons
                     col1, col2 = st.columns(2)
                     with col1:
                         if st.button("Use Data V1 for Modeling", key="use_v1"):
@@ -421,9 +402,8 @@ class DemoApp:
                     - 2,648 observations  
                     - 11 variables  
                     - Aggregated per participant for each profile with computed slope features (avg_PE) 
-                    """)
+                """)
 
-                # Data dictionary for V2
                 st.markdown("#### Data Dictionary – Data V2")
                 if not dict_v2_path.exists():
                     st.error("❌ Data V2 dictionary file not found.")
@@ -434,10 +414,9 @@ class DemoApp:
                     except Exception as e:
                         st.warning(f"⚠️ Could not load Data V2 dictionary: {e}")
 
-                # Data V2 Preview
                 st.markdown("#### Data Preview")
                 if not data_v2_path.exists():
-                    st.error("❌ Data V2 file not found. Check the path or file name.")
+                    st.error("❌ Data V2 file not found.")
                 else:
                     try:
                         df_v2 = pd.read_csv(data_v2_path)
@@ -445,7 +424,6 @@ class DemoApp:
                     except Exception as e:
                         st.warning(f"⚠️ Could not load Data V2: {e}")
 
-                # Buttons
                 col1, col2 = st.columns(2)
                 with col1:
                     if st.button("Use Data V2 for Modeling", key="use_v2"):
@@ -464,9 +442,8 @@ class DemoApp:
                     - 1,119 observations  
                     - 10 variables  
                     - Participant-level dataset with cognitive and behavioral learning features  
-                    """)
+                """)
 
-                # Data dictionary for V2
                 st.markdown("#### Data Dictionary – Data V3")
                 if not dict_v3_path.exists():
                     st.error("❌ Data V3 dictionary file not found.")
@@ -477,10 +454,9 @@ class DemoApp:
                     except Exception as e:
                         st.warning(f"⚠️ Could not load Data V3 dictionary: {e}")
 
-                # Data V3 Preview
                 st.markdown("#### Data Preview")
                 if not data_v3_path.exists():
-                    st.error("❌ Data V3 file not found. Check the path or file name.")
+                    st.error("❌ Data V3 file not found.")
                 else:
                     try:
                         df_v3 = pd.read_csv(data_v3_path)
@@ -488,7 +464,6 @@ class DemoApp:
                     except Exception as e:
                         st.warning(f"⚠️ Could not load Data V3: {e}")
 
-                # Buttons
                 col1, col2 = st.columns(2)
                 with col1:
                     if st.button("Use Data V3 for Modeling", key="use_v3"):
@@ -501,21 +476,22 @@ class DemoApp:
                         st.session_state["selected_data_version"] = "Data V3"
                         st.rerun()
 
-
-
-
+        # -------------------------
+        # Model card
+        # -------------------------
         with tab2:
-            # ---- Model selector ----
             st.markdown("#### Select a Model Version")
             selected = st.selectbox(
                 "Choose which model version to explore:",
                 options=st.session_state.available_models,
-                index=st.session_state.available_models.index(st.session_state.model_version)
-                if st.session_state.model_version in st.session_state.available_models else 0,
-                key="model_version_select"
+                index=(
+                    st.session_state.available_models.index(st.session_state.model_version)
+                    if st.session_state.model_version in st.session_state.available_models
+                    else 0
+                ),
+                key="model_version_select",
             )
 
-            # Apply selection immediately if changed
             if selected != self.model_version:
                 self.set_model_version(selected)
                 st.success(f"Model version set to **{self.model_version}**.")
@@ -526,21 +502,19 @@ class DemoApp:
             data = [
                 ["Processed Training Data", f"data/Data_{self.model_version}",
                  f"LLM_data_train_preprocessed_{self.model_version}", "", ""],
-
                 ["Processed Test Data", f"data/Data_{self.model_version}",
                  f"LLM_data_test_preprocessed_{self.model_version}", "", ""],
-
                 ["Training Results", f"Results/{self.model_version}",
                  f"training_results_{self.model_version}", "", ""],
-
                 ["Test Results", f"Results/{self.model_version}",
                  f"test_results_{self.model_version}", "", ""],
-
                 ["Model Pkl File", f"Results/{self.model_version}",
-                 f"xgboost_model_{self.model_version}", "", ""]
+                 f"xgboost_model_{self.model_version}", "", ""],
             ]
 
-            df = pd.DataFrame(data, columns=["Files", "Directory", "Filename", "Status", "Instruction"])
+            df = pd.DataFrame(
+                data, columns=["Files", "Directory", "Filename", "Status", "Instruction"]
+            )
 
             for i, row in df.iterrows():
                 if i in [0, 1]:
@@ -548,10 +522,7 @@ class DemoApp:
                     script_hint = "run data_preprocesor.py"
                 elif i in [2, 3]:
                     ext = ".json"
-                    if i == 2:
-                        script_hint = "run train.py"
-                    if i == 3:
-                        script_hint = "run predict.py"
+                    script_hint = "run train.py" if i == 2 else "run predict.py"
                 else:
                     ext = ".pkl"
                     script_hint = "run train.py"
@@ -561,6 +532,7 @@ class DemoApp:
 
                 df.loc[i, "Status"] = "✅ Found" if exists else "❌ Missing"
                 df.loc[i, "Instruction"] = "Proceed" if exists else script_hint
+
             st.dataframe(df, use_container_width=True)
 
             st.markdown("---")
@@ -575,27 +547,24 @@ class DemoApp:
 
             with col2:
                 st.subheader("Selected Feature List")
-                if self.training_results:
-                    features_selected = self.training_results['feature_names']
+                if hasattr(self, "training_results") and self.training_results:
+                    features_selected = self.training_results["feature_names"]
                     st.info(f"Number of Features : {self.training_results['n_features']}")
                     st.json(features_selected)
                 else:
-                    st.info("Training Report not found. Run train.py to generate a training report.")
+                    st.info("Training report not found. Run train.py to generate a training report.")
 
     def show_eda_page(self):
         st.header("📊 Explanatory Data Analysis")
 
         st.markdown("""
-                    <style>
-                    /* Center and evenly space Streamlit tabs */
-                    div[data-baseweb="tab-list"] {
-                        justify-content: space-evenly;
-                    }
-                    </style>
-                """, unsafe_allow_html=True)
-
-        # ---------- 1. Which data version? (default = Data V1) ----------
-
+            <style>
+            /* Center and evenly space Streamlit tabs */
+            div[data-baseweb="tab-list"] {
+                justify-content: space-evenly;
+            }
+            </style>
+        """, unsafe_allow_html=True)
 
         current_dir = Path(__file__).resolve().parent
         project_root = current_dir.parent.parent
@@ -611,7 +580,6 @@ class DemoApp:
         if selected_version not in version_files:
             selected_version = "Data V1"
 
-        # Put the selected version FIRST so its tab is active by default
         ordered_versions = [selected_version] + [
             v for v in version_files.keys() if v != selected_version
         ]
@@ -619,7 +587,6 @@ class DemoApp:
         tabs = st.tabs([f"{v} " for v in ordered_versions])
         tab_map = dict(zip(ordered_versions, tabs))
 
-        # ---------- Helper: render EDA for a single version ----------
         def render_eda_for_version(version_name: str, file_path: Path):
             if not file_path.exists():
                 st.error(f"❌ File for **{version_name}** not found at `{file_path}`.")
@@ -631,28 +598,21 @@ class DemoApp:
                 st.error(f"⚠️ Failed to load {version_name}: {e}")
                 return
 
-            # === Overview ===
             st.subheader(f"{version_name} Overview")
             st.write(f"**Shape:** {df.shape[0]:,} rows × {df.shape[1]} columns")
             st.write(f"**File:** `{file_path.name}`")
 
-            # === Data Preview (expander) ===
-
             with st.expander(f"{version_name} Preview", expanded=False):
                 st.dataframe(df.head(10), use_container_width=True)
 
-            # === Data types + summary stats side-by-side ===
             numeric_df = df.select_dtypes(include="number")
-            cat_df = df.select_dtypes(exclude="number")
 
             col1, col2 = st.columns(2)
 
             with col1:
                 st.markdown("#### Data Types")
                 dtypes_df = (
-                    df.dtypes
-                    .reset_index()
-                    .rename(columns={"index": "Column", 0: "Type"})
+                    df.dtypes.reset_index().rename(columns={"index": "Column", 0: "Type"})
                 )
                 st.dataframe(dtypes_df, use_container_width=True)
 
@@ -663,15 +623,11 @@ class DemoApp:
                 else:
                     st.info("No numeric columns found for summary statistics.")
 
-
-
-            # === Feature-wise visualizations ===
             st.markdown("---")
             st.subheader("Feature Visualizations")
 
             all_columns = df.columns.tolist()
 
-            # Choose default features based on which data version we're in
             if version_name == "Data V1":
                 candidates = ["sub", "trial", "profile", "concept"]
             elif version_name == "Data V2":
@@ -686,10 +642,7 @@ class DemoApp:
             else:
                 candidates = []
 
-            # Keep only those that actually exist in the dataframe
             default_features = [c for c in candidates if c in all_columns]
-
-            # Fallback in case some names don't exist
             if not default_features:
                 default_features = all_columns[:3]
 
@@ -698,63 +651,51 @@ class DemoApp:
                 options=all_columns,
                 default=default_features,
                 help="Choose one or more columns to generate Plotly charts for.",
-                key=f"feature_select_{version_name}",  # keep per-tab state
+                key=f"feature_select_{version_name}",
             )
 
             if not selected_features:
                 st.info("Select at least one feature to see graphs.")
-                return
+            else:
+                cols_in_row = 2 if len(selected_features) > 1 else 1
+                row_cols = None
 
-            cols_in_row = 2 if len(selected_features) > 1 else 1
-            row_cols = None
+                for idx, col in enumerate(selected_features):
+                    if idx % cols_in_row == 0:
+                        row_cols = st.columns(cols_in_row)
 
-            for idx, col in enumerate(selected_features):
-                # New row every `cols_in_row` features
-                if idx % cols_in_row == 0:
-                    row_cols = st.columns(cols_in_row)
+                    target_col = row_cols[idx % cols_in_row]
 
-                target_col = row_cols[idx % cols_in_row]
+                    with target_col:
+                        st.markdown(f"### 📌 {col}")
 
-                with target_col:
-                    st.markdown(f"### 📌 {col}")
+                        series = df[col].dropna()
+                        if series.empty:
+                            st.info("No data available for this feature (all values are missing).")
+                            continue
 
-                    series = df[col].dropna()
-                    if series.empty:
-                        st.info("No data available for this feature (all values are missing).")
-                        continue
+                        if pd.api.types.is_numeric_dtype(series):
+                            fig = px.histogram(
+                                df,
+                                x=col,
+                                nbins=30,
+                                title=f"Distribution of {col}",
+                            )
+                            fig.update_layout(bargap=0.05)
+                            st.plotly_chart(fig, use_container_width=True)
+                        else:
+                            value_counts = series.value_counts().reset_index().head(30)
+                            value_counts.columns = [col, "Count"]
 
-                    n_unique = series.nunique()
+                            fig = px.bar(
+                                value_counts,
+                                x=col,
+                                y="Count",
+                                title=f"Value Counts for {col}",
+                            )
+                            fig.update_layout(xaxis_tickangle=-45)
+                            st.plotly_chart(fig, use_container_width=True)
 
-                    # Numeric → histogram
-                    if pd.api.types.is_numeric_dtype(series):
-                        fig = px.histogram(
-                            df,
-                            x=col,
-                            nbins=30,
-                            title=f"Distribution of {col} ",
-                            subtitle=f"Unique values: {n_unique}",
-                        )
-                        fig.update_layout(bargap=0.05)
-                        st.plotly_chart(fig, use_container_width=True)
-
-                    # Categorical → value-counts bar chart
-                    else:
-                        value_counts = series.value_counts().reset_index().head(30)
-                        value_counts.columns = [col, "Count"]
-
-                        fig = px.bar(
-                            value_counts,
-                            x=col,
-                            y="Count",
-                            title=f"Value Counts for {col} ",
-                            subtitle= f"Unique values: {n_unique}",
-                        )
-                        fig.update_layout(xaxis_tickangle=-45)
-                        st.plotly_chart(fig, use_container_width=True)
-
-
-
-                # === Correlation heatmap ===
             st.markdown("---")
 
             if not numeric_df.empty and numeric_df.shape[1] > 1:
@@ -764,9 +705,9 @@ class DemoApp:
                 fig = px.imshow(
                     corr,
                     text_auto=False,
-                    color_continuous_scale='RdBu',
+                    color_continuous_scale="RdBu",
                     zmin=-1,
-                    zmax=1
+                    zmax=1,
                 )
                 st.plotly_chart(fig, use_container_width=True)
             elif not numeric_df.empty:
@@ -774,14 +715,12 @@ class DemoApp:
             else:
                 st.info("No numeric columns available for correlation heatmap.")
 
-            # === FSR distribution by target ===
             st.markdown("---")
             st.subheader("FSR Distribution by Target")
 
             FSR_COL = "FSR"
             TARGET_COL = "td_or_asd"
 
-            # Fixed label + color mapping (reuse this everywhere in your app)
             LABEL_MAP = {
                 0: "0: TD",
                 1: "1: ASD",
@@ -789,23 +728,20 @@ class DemoApp:
                 "1": "1: ASD",
             }
             COLOR_MAP = {
-                0: "#E74C3C",  # TD = red
-                1: "#3498DB",  # ASD = blue
+                0: "#E74C3C",
+                1: "#3498DB",
                 "0": "#E74C3C",
                 "1": "#3498DB",
             }
 
             if FSR_COL in df.columns and TARGET_COL in df.columns:
-                # Get unique target values present in this df
                 unique_vals = df[TARGET_COL].dropna().unique()
 
-                # Enforce a consistent order: 0 then 1 (works if stored as int or str)
                 target_order = []
                 for key in [0, 1, "0", "1"]:
                     if key in unique_vals and key not in target_order:
                         target_order.append(key)
 
-                # Fallback in case something unexpected is in the column
                 if not target_order:
                     target_order = list(unique_vals)
 
@@ -814,9 +750,8 @@ class DemoApp:
                     for t in target_order
                 ]
                 labels = [LABEL_MAP.get(t, str(t)) for t in target_order]
-                colors = [COLOR_MAP.get(t, "#7f7f7f") for t in target_order]  # default grey if unknown
+                colors = [COLOR_MAP.get(t, "#7f7f7f") for t in target_order]
 
-                # Create smoothed density plot (KDE)
                 fig_fsr = ff.create_distplot(
                     groups,
                     group_labels=labels,
@@ -826,7 +761,6 @@ class DemoApp:
                     curve_type="kde",
                 )
 
-                # Fill under each curve for smooth shaded look
                 for trace in fig_fsr.data:
                     trace.update(fill="tozeroy", opacity=0.4)
 
@@ -842,29 +776,20 @@ class DemoApp:
             else:
                 st.info(f"Columns `{FSR_COL}` and/or `{TARGET_COL}` not found in this dataset.")
 
-        # ---------- Render each tab's EDA ----------
         for version_name, file_path in version_files.items():
             with tab_map[version_name]:
                 render_eda_for_version(version_name, file_path)
 
-
-
     def show_results_page(self):
         st.header(f"🧮 Results — {self.model_version}")
         st.caption(f"Reading from: `Results/{self.model_version}`")
-        # TODO: load and display figures/metrics specific to self.model_version
-        # st.info("Results page ")
 
-
-        # ---- Dynamic import of explainers ----
         try:
-            # Import path: Model_Vx.shap_explain  or  Model_Vx.lime_explain
             model_folder = f"Model_{self.model_version}"
             module_name = "visualization"
             full_module_path = f"{model_folder}.{module_name}"
 
             viz = import_module(full_module_path)
-            # st.success(f"Loaded {full_module_path}")
         except Exception as e:
             st.error(f"❌ Could not import {module_name}.py for model {self.model_version}")
             st.info(f"Tried path: {full_module_path.replace('.', '/')}.py")
@@ -873,32 +798,48 @@ class DemoApp:
 
         visualizer = viz.ModelVisualizerInteractive()
 
-        tab1, tab2, tab3 = st.tabs(["Training Performance", "Test Performance", "Feature Visualizations"])
+        tab1, tab2, tab3 = st.tabs(
+            ["Training Performance", "Test Performance", "Feature Visualizations"]
+        )
 
         with tab1:
-
-                if self.training_results:
-                    st.plotly_chart(visualizer.fig_cv_scores(self.training_results), use_container_width=True)
-                    st.plotly_chart(visualizer.fig_overall_performance(self.training_results), use_container_width=True)
-                else:
-                    st.info("Training Report not found. Run train.py to generate a training report.")
-
+            if hasattr(self, "training_results") and self.training_results:
+                st.plotly_chart(
+                    visualizer.fig_cv_scores(self.training_results),
+                    use_container_width=True,
+                )
+                st.plotly_chart(
+                    visualizer.fig_overall_performance(self.training_results),
+                    use_container_width=True,
+                )
+            else:
+                st.info("Training report not found. Run train.py to generate a training report.")
 
         with tab2:
-            if self.test_results:
-                st.plotly_chart(visualizer.fig_confusion_matrix(self.test_results), use_container_width=True)
-
-                st.plotly_chart(visualizer.fig_classification_report(self.test_results), use_container_width=True)
-
+            if hasattr(self, "test_results") and self.test_results:
+                st.plotly_chart(
+                    visualizer.fig_confusion_matrix(self.test_results),
+                    use_container_width=True,
+                )
+                st.plotly_chart(
+                    visualizer.fig_classification_report(self.test_results),
+                    use_container_width=True,
+                )
             else:
-                st.info("Test Report not found. Run predict.py to generate a training report.")
+                st.info("Test report not found. Run predict.py to generate a test report.")
 
         with tab3:
-            if self.explainability_data:
-                st.plotly_chart(visualizer.fig_feature_importance_by_target(self.explainability_data), use_container_width=True)
-
+            if hasattr(self, "explainability_data") and self.explainability_data:
+                st.plotly_chart(
+                    visualizer.fig_feature_importance_by_target(self.explainability_data),
+                    use_container_width=True,
+                )
             else:
-                st.info("Test Report not found. Run predict.py to generate a training report.")
+                st.info("Explainability report not found. Run predict.py to generate explainability outputs.")
+
+    def show_explainability_page(self):
+        st.header("🔍 Explainability (xAI)")
+        st.info("Wire up SHAP/LIME visualizations here (not shown in this snippet).")
 
     def show_cluster_analysis_page(self):
         st.header("Cluster Analysis 🧩")
@@ -923,6 +864,32 @@ class DemoApp:
             "t-SNE + HDBSCAN (V3)": "tsne_hdbscan",
         }
         model_type = method_map[method_label]
+
+        # ------------------------------
+        # 1a) Participant subset selection (FSR-based)
+        # ------------------------------
+        subset_label = st.radio(
+            "Data subset for clustering",
+            [
+                "All participants (full FSR range)",
+                "FSR overlap region only",
+                "FSR non-overlap region only",
+            ],
+            index=0,
+            horizontal=True,
+        )
+
+        subset_map = {
+            "All participants (full FSR range)": "full",
+            "FSR overlap region only": "fsr_overlap",
+            "FSR non-overlap region only": "fsr_nonoverlap",
+        }
+        subset_mode = subset_map[subset_label]
+
+        st.caption(
+            f"Current subset mode: **{subset_mode}** "
+            f"(this controls how `data_preprocessed_clustering.csv` is generated)."
+        )
 
         # ------------------------------
         # 2) Feature set selection
@@ -1018,51 +985,88 @@ class DemoApp:
         run_id = st.text_input(
             "Run ID (used as suffix for saving results)",
             value="ui",
-            help="If you change this, a new subfolder will be created in Results/Clustering/general/",
+            help=(
+                "If you change this, a new subfolder will be created in "
+                "Results/Clustering/general/"
+            ),
         )
+        # ------------------------------
+        # 3a) Optional PCA component override (for PCA methods only)
+        # ------------------------------
+        pca_n_components = None  # default → auto by variance
+        tsne_n_components = 2    # default → 2D t-SNE
+
+        if model_type in ("pca_kmeans", "pca_gmm"):
+            st.markdown("#### PCA components for clustering")
+            st.caption(
+                "Default is **auto** (selects the smallest number of PCs that reach "
+                "the variance threshold). You can override it after seeing the "
+                "default run."
+            )
+
+            override_pca = st.checkbox(
+                "Select PCA components",
+                value=False,
+                help="When checked, clustering will use exactly this many principal components.",
+            )
+
+            if override_pca:
+                pca_n_components = st.selectbox(
+                    "Number of PCA components (for clustering)",
+                    options=list(range(2, 21)),  # 2..20
+                    index=0,
+                )
+
+        # ------------------------------
+        # 3b) t-SNE dimensionality (for t-SNE + HDBSCAN only)
+        # ------------------------------
+        if model_type == "tsne_hdbscan":
+            st.markdown("#### t-SNE dimensionality")
+            st.caption(
+                "Choose whether to embed into **2D** (tSNE1, tSNE2) or **3D** "
+                "(tSNE1, tSNE2, tSNE3). Cluster explorer will always provide a 2D view, "
+                "and adds a 3D explorer when 3D t-SNE is selected."
+            )
+            tsne_dim_choice = st.radio(
+                "t-SNE embedding dimensions",
+                options=[2, 3],
+                index=0,
+                horizontal=True,
+            )
+            tsne_n_components = tsne_dim_choice
 
         st.markdown("---")
-
-        if "cluster_base_dir" not in st.session_state:
-            st.session_state.cluster_base_dir = ""
 
         # ------------------------------
         # 4) Run button
         # ------------------------------
         if st.button("🚀 Run clustering"):
             with st.spinner("Running clustering pipeline... this may take a few minutes."):
-                # 1) Load preprocessed data (or create it)
-                preprocessed_path = (
-                        PROJECT_ROOT
-                        / "data"
-                        / CLUSTER_DATA_VERSION
-                        / "data_preprocessed_clustering.csv"
+
+                # Always regenerate preprocessed CSV based on subset_mode
+                df = preprocess_clustering_data(
+                    PROJECT_ROOT,
+                    subset_mode=subset_mode,
                 )
 
-                if preprocessed_path.exists():
-                    df = pd.read_csv(preprocessed_path)
-                    print(f"Loaded preprocessed clustering data from {preprocessed_path}")
-                else:
-                    df = preprocess_clustering_data(PROJECT_ROOT)
-
-                # 2) Run analyzer
                 analyzer = GeneralClusterAnalyzer(
                     project_root=PROJECT_ROOT,
                     model_type=model_type,
                     feature_mode=feature_mode,
                     run_id=run_id,
-                    custom_features=custom_features,  # None unless feature_mode == "custom"
+                    custom_features=custom_features,
+                    pca_n_components=pca_n_components,
+                    tsne_n_components=tsne_n_components,
                 )
                 analyzer.run_pipeline(df)
 
-                # 3) Remember where results were written
                 base_name = f"{model_type}_{feature_mode}_{run_id}"
                 base_dir = (
-                        PROJECT_ROOT
-                        / "Results"
-                        / "Clustering"
-                        / "general"
-                        / base_name
+                    PROJECT_ROOT
+                    / "Results"
+                    / "Clustering"
+                    / "general"
+                    / base_name
                 )
                 st.session_state.cluster_base_dir = str(base_dir)
 
@@ -1077,6 +1081,8 @@ class DemoApp:
             return
 
         base_dir = Path(base_dir_str)
+        st.caption(f"Using clustering results from: `{base_dir}`")
+
         td_asd_proj_dir = base_dir / "td_asd_clusters" / "projections"
         asd_proj_dir = base_dir / "asd_subclusters" / "projections"
 
@@ -1088,20 +1094,28 @@ class DemoApp:
             ["All Participants (TD + ASD)", "ASD-only Participants (ASD Subclusters)"]
         )
 
-        explorer_file_map = {
-            "pca_kmeans": "pca_cluster_explorer_kmeans.html",
-            "pca_gmm": "pca_cluster_explorer_gmm.html",
-            "tsne_hdbscan": "tsne_cluster_explorer_hdbscan.html",
-        }
-
-        # interactive target projection HTML filenames
-        target_html_map = {
-            "pca_kmeans": "pca_target_projection_kmeans.html",
-            "pca_gmm": "pca_target_projection_gmm.html",
+        # --- filenames for target projection + explorer ---
+        target_2d_map = {
+            "pca_kmeans": "pca_target_projection_kmeans_2d.html",
+            "pca_gmm": "pca_target_projection_gmm_2d.html",
             "tsne_hdbscan": "tsne_target_projection.html",
         }
+        target_3d_map = {
+            "pca_kmeans": "pca_target_projection_kmeans_3d.html",
+            "pca_gmm": "pca_target_projection_gmm_3d.html",
+        }
 
-        # (optional) static PNG fallback
+        explorer_2d_map = {
+            "pca_kmeans": "pca_cluster_explorer_kmeans_2d.html",
+            "pca_gmm": "pca_cluster_explorer_gmm_2d.html",
+            "tsne_hdbscan": "tsne_cluster_explorer_hdbscan.html",
+        }
+        explorer_3d_map = {
+            "pca_kmeans": "pca_cluster_explorer_kmeans_3d.html",
+            "pca_gmm": "pca_cluster_explorer_gmm_3d.html",
+            "tsne_hdbscan": "tsne_cluster_explorer_hdbscan_3d.html",
+        }
+
         target_png_map = {
             "pca_kmeans": "pca_target_projection_kmeans.png",
             "pca_gmm": "pca_target_projection_gmm.png",
@@ -1109,32 +1123,192 @@ class DemoApp:
         }
 
         def render_cluster_tab(proj_dir: Path, context_label: str):
+            # ----- Load metrics (for PCA info etc.) -----
+            metrics = None
+            metrics_path = proj_dir.parent / "metrics.json"
+            if metrics_path.exists():
+                try:
+                    with open(metrics_path, "r") as f:
+                        metrics = json.load(f)
+                except Exception:
+                    metrics = None
+
+            # ----- PCA variance explained (PCA methods only) -----
+            if model_type in ("pca_kmeans", "pca_gmm"):
+                st.subheader(f"PCA Variance Explained — {context_label}")
+                var_img = proj_dir / "pca_variance.png"
+                if var_img.exists():
+                    st.image(str(var_img), use_container_width=True)
+                else:
+                    st.info("PCA variance plot not found in this run.")
+
+                # (2) Show chosen #PCs and cumulative variance from metrics.json
+                if metrics and "pca_params" in metrics:
+                    p = metrics["pca_params"]
+                    chosen_k = p.get("chosen_n_components")
+                    cum_var = p.get("cum_explained_at_chosen")
+                    if chosen_k is not None and cum_var is not None:
+                        try:
+                            pct = float(cum_var) * 100.0
+                            st.caption(
+                                f"Using **{int(chosen_k)}** principal components "
+                                f"(cumulative explained variance ≈ **{pct:.1f}%**)."
+                            )
+                        except Exception:
+                            pass
+
+                st.markdown("---")
+
+            # ----- Cluster explorer (2D / 3D) -----
             st.subheader(f"Cluster Explorer — {context_label}")
-            explorer_file = proj_dir / explorer_file_map[model_type]
-            if explorer_file.exists():
-                html_str = explorer_file.read_text(encoding="utf-8")
-                components.html(html_str, height=650, scrolling=True)
+
+            explorer_2d = proj_dir / explorer_2d_map[model_type]
+            explorer_3d_name = explorer_3d_map.get(model_type)
+            explorer_3d = proj_dir / explorer_3d_name if explorer_3d_name else None
+
+            has_explorer_2d = explorer_2d.exists()
+            has_explorer_3d = explorer_3d is not None and explorer_3d.exists()
+
+            if not has_explorer_2d and not has_explorer_3d:
+                st.info("Cluster explorer HTML not found for this run.")
             else:
-                st.info(f"Explorer file not found: `{explorer_file.name}`")
+                modes = []
+                path_by_mode = {}
+                if has_explorer_2d:
+                    modes.append("2D")
+                    path_by_mode["2D"] = explorer_2d
+                if has_explorer_3d:
+                    modes.append("3D")
+                    path_by_mode["3D"] = explorer_3d
+
+                # (3) Clear 2D vs 3D explanation
+                if len(modes) == 1:
+                    if "3D" in modes:
+                        st.caption(
+                            "Only **3D** view available for this run "
+                            "(PC1 vs PC2 vs PC3; at least 3 principal components)."
+                        )
+                    else:
+                        if model_type in ("pca_kmeans", "pca_gmm"):
+                            st.caption(
+                                "Only **2D** view available for this run "
+                                "(PC1 vs PC2; fewer than 3 usable principal components "
+                                "or 3D file was not generated)."
+                            )
+                        else:
+                            st.caption(
+                                "Use the selector below to switch between "
+                                "**2D (PC1 vs PC2)** and **3D (PC1 vs PC2 vs PC3)** views."
+                            )
+
+                    html_str = path_by_mode[modes[0]].read_text(encoding="utf-8")
+                    components.html(html_str, height=650, scrolling=True)
+
+                else:
+                    if model_type in ("pca_kmeans", "pca_gmm"):
+                        st.caption(
+                            "Use the selector below to switch between "
+                            "**2D (PC1 vs PC2)** and **3D (PC1 vs PC2 vs PC3)** views."
+                        )
+                    elif model_type == "tsne_hdbscan":
+                        st.caption(
+                            "Use the selector below to switch between "
+                            "**2D (tSNE1 vs tSNE2)** and **3D (tSNE1 vs tSNE2 vs tSNE3)** views."
+                        )
+                    else:
+                        st.caption(
+                            "Use the selector below to switch between **2D** and **3D** views."
+                        )
+
+                    default_mode = "3D" if "3D" in modes else "2D"
+                    default_index = modes.index(default_mode)
+                    explorer_mode = st.selectbox(
+                        "Cluster explorer view",
+                        options=modes,
+                        index=default_index,
+                        key=f"cluster_explorer_mode_{context_label.replace(' ', '_')}",
+                    )
+                    html_str = path_by_mode[explorer_mode].read_text(encoding="utf-8")
+                    components.html(html_str, height=650, scrolling=True)
 
             st.markdown("---")
-            st.subheader(f"Target Projection (TD vs ASD) — {context_label}")
+            st.subheader(f"Target Projection — {context_label}")
 
-            # --- interactive target projection (preferred) ---
-            target_html = proj_dir / target_html_map[model_type]
-            if target_html.exists():
-                html_str = target_html.read_text(encoding="utf-8")
-                components.html(html_str, height=600, scrolling=True)
-            else:
-                # Fallback: static PNG if HTML is missing
-                target_png = proj_dir / target_png_map[model_type]
-                if target_png.exists():
-                    st.image(str(target_png), use_container_width=True)
+            # ----- Target projection (2D / 3D) -----
+            target_2d = proj_dir / target_2d_map[model_type]
+            target_3d = None
+            if model_type in ("pca_kmeans", "pca_gmm"):
+                t3_name = target_3d_map.get(model_type)
+                target_3d = proj_dir / t3_name if t3_name else None
+
+            has_2d = target_2d.exists()
+            has_3d = target_3d is not None and target_3d.exists()
+
+            if model_type in ("pca_kmeans", "pca_gmm") and (has_2d or has_3d):
+                modes = []
+                path_by_mode = {}
+                if has_2d:
+                    modes.append("2D")
+                    path_by_mode["2D"] = target_2d
+                if has_3d:
+                    modes.append("3D")
+                    path_by_mode["3D"] = target_3d
+
+                if len(modes) == 1:
+                    if "3D" in modes:
+                        st.caption(
+                            "Only **3D** target projection available "
+                            "(PC1 vs PC2 vs PC3; at least 3 principal components)."
+                        )
+                    else:
+                        st.caption(
+                            "Only **2D** target projection available "
+                            "(PC1 vs PC2; fewer than 3 usable principal components "
+                            "or 3D file was not generated)."
+                        )
+
+                    html_str = path_by_mode[modes[0]].read_text(encoding="utf-8")
+                    components.html(html_str, height=600, scrolling=True)
+
                 else:
-                    st.info(
-                        f"Target projection file not found: "
-                        f"`{target_html.name}` or `{target_png.name}`"
+                    st.caption(
+                        "Switch between **2D (PC1 vs PC2)** and "
+                        "**3D (PC1 vs PC2 vs PC3)** target views."
                     )
+                    default_mode = "3D" if "3D" in modes else "2D"
+                    default_index = modes.index(default_mode)
+                    viz_mode = st.selectbox(
+                        "Visualization mode (PCA target projection)",
+                        options=modes,
+                        index=default_index,
+                        key=f"pca_viz_mode_{context_label.replace(' ', '_')}",
+                    )
+
+                    html_str = path_by_mode[viz_mode].read_text(encoding="utf-8")
+                    components.html(
+                        html_str,
+                        height=650 if viz_mode == "3D" else 600,
+                        scrolling=True,
+                    )
+
+            else:
+                # Non-PCA methods or PCA with no HTML → fallback to 2D or PNG
+                if target_2d.exists():
+                    if model_type == "tsne_hdbscan":
+                        st.caption("t-SNE target projection is available in **2D** only.")
+                    html_str = target_2d.read_text(encoding="utf-8")
+                    components.html(html_str, height=600, scrolling=True)
+                else:
+                    target_png = proj_dir / target_png_map[model_type]
+                    if target_png.exists():
+                        if model_type == "tsne_hdbscan":
+                            st.caption("t-SNE target projection is available in **2D** only.")
+                        st.image(str(target_png), use_container_width=True)
+                    else:
+                        st.info(
+                            f"Target projection file not found: "
+                            f"`{target_2d.name}` or `{target_png.name}`"
+                        )
 
         with tab_all:
             render_cluster_tab(td_asd_proj_dir, "All Participants")
@@ -1153,7 +1327,7 @@ def main():
 
     pages = {
         "🏠 Home": "home",
-        "📈 Data & Model" : "overview",
+        "📈 Data & Model": "overview",
         "📊 EDA": "eda",
         "🧮 Model Results": "results",
         "🔍 xAI - Explainability": "explainability",
@@ -1177,28 +1351,22 @@ def main():
     st.sidebar.caption(get_model_info(st.session_state.model_version))
 
     # Ensure artifacts exist for selected version
-    if not app.load_results():
-        st.error(f"Could not find results for **{st.session_state.model_version}** at `Results/{st.session_state.model_version}`.")
-        # st.stop()
+    app.load_results()
 
     # Route to selected page
     if st.session_state.page == "home":
         app.show_home_page()
-
     elif st.session_state.page == "overview":
         app.show_model_and_data_page()
-
     elif st.session_state.page == "eda":
         app.show_eda_page()
-
     elif st.session_state.page == "results":
         app.show_results_page()
-
     elif st.session_state.page == "explainability":
         app.show_explainability_page()
-
     elif st.session_state.page == "clustering":
         app.show_cluster_analysis_page()
+
 
 if __name__ == "__main__":
     main()
