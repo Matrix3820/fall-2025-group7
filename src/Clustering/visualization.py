@@ -768,11 +768,8 @@ def plot_tsne_projection(X_tsne, df, color_col, save_path, title=None):
 
     # === Choose palette and title dynamically ===
     if color_col == "td_or_asd":
-        palette = {0: "#9FE2BF", 1: "#FF9999"}  # TD = green, ASD = red (soft)
-        if df[color_col].nunique() == 1:
-            plot_title = "2D Representation of ASD Participants"
-        else:
-            plot_title = "2D Representation of TD/ASD Participants"
+        palette, base_title = _get_td_asd_palette_and_title(df, "td_or_asd")
+        plot_title = base_title.replace("2D", "2D")  # keep wording
     elif color_col == "cluster":
         n_clusters = df[color_col].nunique()
         palette = sns.color_palette("tab20", n_clusters)
@@ -1071,6 +1068,8 @@ def plot_tsne_cluster_explorer(X_tsne, df, numeric_cols, save_path):
         f.write(html_str)
 
     print(f"✅ Interactive t-SNE cluster explorer saved → {save_path}")
+
+
 def plot_pca_cluster_explorer_3d(X_pca, df, numeric_cols, save_path, method_name="kmeans"):
     """
     Interactive PCA cluster explorer in 3D:
@@ -1258,6 +1257,8 @@ def plot_pca_cluster_explorer_3d(X_pca, df, numeric_cols, save_path, method_name
         f.write(html_str)
 
     print(f"✅ Interactive 3D PCA cluster explorer saved → {save_path}")
+
+
 def plot_tsne_cluster_explorer_3d(X_tsne, df, numeric_cols, save_path):
     """
     Interactive t-SNE cluster explorer in 3D (HDBSCAN):
@@ -1436,3 +1437,235 @@ def plot_tsne_cluster_explorer_3d(X_tsne, df, numeric_cols, save_path):
         f.write(html_str)
 
     print(f"✅ Interactive 3D t-SNE cluster explorer saved → {save_path}")
+
+
+# ===================== NEW: T-SNE 3D PROJECTIONS (STATIC + STREAMLIT) =====================
+
+def plot_tsne_projection_3d(X_tsne, df, color_col, save_path, title=None):
+    """
+    Static 3D t-SNE projection (tSNE1, tSNE2, tSNE3)
+    for either clusters or TD/ASD target.
+    """
+    if X_tsne.shape[1] < 3:
+        print("⚠️ plot_tsne_projection_3d: X_tsne has < 3 dims, skipping.")
+        return
+
+    fig = plt.figure(figsize=(8, 6))
+    ax = fig.add_subplot(111, projection='3d')
+
+    if color_col == "td_or_asd":
+        palette, base_title = _get_td_asd_palette_and_title(df, "td_or_asd")
+        colors = df[color_col].map(palette)
+        plot_title = base_title.replace("2D", "3D")
+    elif color_col == "cluster":
+        n_clusters = df[color_col].nunique()
+        base_palette = sns.color_palette("tab20", n_clusters)
+        color_map = {c: base_palette[i % len(base_palette)] for i, c in enumerate(sorted(df[color_col].unique()))}
+        colors = df[color_col].map(color_map)
+        plot_title = "3D Representation of HDBSCAN Clusters"
+    else:
+        pal = sns.color_palette("husl", df[color_col].nunique())
+        color_map = {c: pal[i % len(pal)] for i, c in enumerate(sorted(df[color_col].unique()))}
+        colors = df[color_col].map(color_map)
+        plot_title = f"3D Representation of {color_col}"
+
+    final_title = title or plot_title
+
+    ax.scatter(
+        X_tsne[:, 0],
+        X_tsne[:, 1],
+        X_tsne[:, 2],
+        c=colors,
+        s=45,
+        edgecolor="black",
+        linewidth=0.5,
+        alpha=0.9,
+    )
+    ax.set_title(final_title, fontsize=13, fontweight="bold")
+    ax.set_xlabel("t-SNE Dimension 1")
+    ax.set_ylabel("t-SNE Dimension 2")
+    ax.set_zlabel("t-SNE Dimension 3")
+
+    plt.tight_layout()
+    save_dual_format(save_path)
+
+
+def plot_tsne_projection_streamlit_3d(X_tsne, df, color_col, save_path, title=None):
+    """
+    Interactive 3D t-SNE projection for Streamlit (tSNE1, tSNE2, tSNE3).
+    Supports both cluster color and TD/ASD target color.
+    """
+    if X_tsne.shape[1] < 3:
+        print("⚠️ plot_tsne_projection_streamlit_3d: X_tsne has < 3 dims, skipping.")
+        return
+
+    df_plot = df.copy()
+    df_plot["tSNE1"] = X_tsne[:, 0]
+    df_plot["tSNE2"] = X_tsne[:, 1]
+    df_plot["tSNE3"] = X_tsne[:, 2]
+
+    color_map = None
+    legend_title = color_col
+    color_field = color_col
+
+    if color_col == "td_or_asd":
+        label_map = {0: "TD", 1: "ASD"}
+        df_plot["td_asd_label"] = df_plot["td_or_asd"].map(label_map).fillna("Unknown")
+        color_field = "td_asd_label"
+        legend_title = "Group"
+        color_map = {
+            "TD": "#9FE2BF",
+            "ASD": "#FF9999",
+            "Unknown": "#AAAAAA",
+        }
+
+        _, base_title = _get_td_asd_palette_and_title(df_plot, "td_or_asd")
+        plot_title = base_title.replace("2D", "3D")
+    elif color_col == "cluster":
+        legend_title = "Cluster"
+        plot_title = "3D Representation of HDBSCAN Clusters"
+    else:
+        plot_title = title or f"3D Representation of {color_col}"
+
+    fig = px.scatter_3d(
+        df_plot,
+        x="tSNE1",
+        y="tSNE2",
+        z="tSNE3",
+        color=color_field,
+        color_discrete_map=color_map,
+        hover_data={
+            "cluster": "cluster" in df_plot.columns,
+            "td_or_asd": "td_or_asd" in df_plot.columns,
+            "tSNE1": ':.3f',
+            "tSNE2": ':.3f',
+            "tSNE3": ':.3f',
+        },
+        title=plot_title,
+        template="plotly_white",
+    )
+    fig.update_traces(
+        marker=dict(
+            size=5,
+            line=dict(width=0.7, color="black")
+        )
+    )
+    fig.update_layout(
+        height=650,
+        title_font=dict(size=16),
+        scene=dict(
+            xaxis_title="t-SNE Dimension 1",
+            yaxis_title="t-SNE Dimension 2",
+            zaxis_title="t-SNE Dimension 3",
+        ),
+        legend_title=legend_title,
+    )
+
+    html_path = Path(save_path).with_suffix(".html")
+    fig.write_html(html_path, include_plotlyjs="inline")
+    print(f"✅ Streamlit-ready interactive 3D t-SNE saved: {html_path}")
+
+
+# ===================== NEW: JSD-BASED VISUALS FOR TABS =====================
+
+def plot_jsd_cluster_heatmap(jsd_stats, save_path, title="JSD-based Cluster Separation"):
+    """
+    JSD heatmap across clusters (aggregated over features).
+
+    jsd_stats: dict from metrics["jsd_stats"]:
+      {
+        "cluster_labels": [...],
+        "per_feature": {feat: [[...], [...], ...]},
+        ...
+      }
+
+    We compute:
+      J_ij = mean over features of JSD(feat, cluster_i vs cluster_j)
+    and plot J as a k x k heatmap.
+    """
+    save_path = Path(save_path)
+
+    cluster_labels = jsd_stats.get("cluster_labels", [])
+    per_feature = jsd_stats.get("per_feature", {})
+
+    k = len(cluster_labels)
+    if k == 0 or not per_feature:
+        print("⚠️ plot_jsd_cluster_heatmap: missing clusters or per_feature; skipping.")
+        return
+
+    mat_sum = np.zeros((k, k), dtype=float)
+    n_feats = 0
+
+    for feat, m in per_feature.items():
+        arr = np.asarray(m, dtype=float)
+        if arr.shape != (k, k):
+            continue
+        mat_sum += arr
+        n_feats += 1
+
+    if n_feats == 0:
+        print("⚠️ plot_jsd_cluster_heatmap: no valid feature matrices; skipping.")
+        return
+
+    mat_mean = mat_sum / n_feats
+    df_heat = pd.DataFrame(
+        mat_mean,
+        index=[str(c) for c in cluster_labels],
+        columns=[str(c) for c in cluster_labels],
+    )
+
+    plt.figure(figsize=(6, 5))
+    sns.heatmap(
+        df_heat,
+        annot=True,
+        fmt=".3f",
+        cmap="magma",
+        square=True,
+        cbar_kws={"label": "Mean JSD across features"},
+    )
+    plt.title(title, fontsize=13, fontweight="bold")
+    plt.xlabel("Cluster")
+    plt.ylabel("Cluster")
+    plt.tight_layout()
+    save_dual_format(save_path)
+    print(f"✅ JSD cluster heatmap saved → {save_path}")
+
+
+def plot_jsd_feature_ranking(jsd_stats, save_path, top_n=15, title="Top Features by JSD Separation"):
+    """
+    Bar chart of top_n features by mean JSD score.
+
+    jsd_stats: dict from metrics["jsd_stats"]:
+      {
+        "feature_scores": {feat: float},
+        "ranked_features": [...]
+      }
+    """
+    save_path = Path(save_path)
+
+    feature_scores = jsd_stats.get("feature_scores", {})
+    if not feature_scores:
+        print("⚠️ plot_jsd_feature_ranking: feature_scores missing/empty; skipping.")
+        return
+
+    # Use ranked_features if given, else sort from feature_scores
+    ranked = jsd_stats.get("ranked_features")
+    if ranked:
+        ranked = [f for f in ranked if f in feature_scores]
+    else:
+        ranked = sorted(feature_scores.keys(), key=lambda f: feature_scores[f], reverse=True)
+
+    ranked = ranked[:top_n]
+    scores = [feature_scores[f] for f in ranked]
+
+    plt.figure(figsize=(8, max(4, 0.3 * len(ranked) + 2)))
+    y_pos = np.arange(len(ranked))
+
+    plt.barh(y_pos, scores, color="teal")
+    plt.yticks(y_pos, ranked)
+    plt.gca().invert_yaxis()  # highest JSD at top
+    plt.xlabel("Mean JSD across cluster pairs")
+    plt.title(title, fontsize=13, fontweight="bold")
+    plt.tight_layout()
+    save_dual_format(save_path)
+    print(f"✅ JSD feature ranking plot saved → {save_path}")
