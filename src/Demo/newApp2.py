@@ -902,9 +902,9 @@ class DemoApp:
         )
 
         # ------------------------------
-        # 2) Feature set selection
+        # 2) Feature set selection (DROPDOWN)
         # ------------------------------
-        feature_label = st.radio(
+        feature_label = st.selectbox(
             "Feature set for clustering",
             [
                 "7 Numeric (scaled)",
@@ -914,7 +914,7 @@ class DemoApp:
                 "Custom feature subset",
             ],
             index=2,
-            horizontal=True,
+            help="Choose a predefined feature subset, or select 'Custom feature subset' to pick features manually.",
         )
 
         feature_map = {
@@ -933,10 +933,12 @@ class DemoApp:
         # ------------------------------
         if feature_mode == "custom":
             st.markdown("### Custom features")
-            st.markdown("##### Scaled Numeric features")
+
+            # ----- Scaled numeric features -----
+            st.markdown("##### Scaled Numeric Features")
             st.info(
                 "Select which **scaled numeric** features to include. "
-                "You can optionally add the full NLP feature block."
+                "You can also select any subset of NLP features below."
             )
 
             numeric_feature_defs = [
@@ -950,9 +952,9 @@ class DemoApp:
             ]
 
             selected_numeric = []
-            cols = st.columns(3)
+            num_cols = st.columns(3)
             for i, (col_name, label) in enumerate(numeric_feature_defs):
-                with cols[i % 3]:
+                with num_cols[i % 3]:
                     checked = st.checkbox(
                         label,
                         value=True,
@@ -962,31 +964,37 @@ class DemoApp:
                         selected_numeric.append(col_name)
 
             st.markdown("---")
-            st.markdown("##### NLP features")
+            st.markdown("##### NLP Features")
 
-            include_nlp = st.checkbox(
-                "Include NLP features",
-                value=True,
-                help=(
-                    "If checked, the following features are added:\n "
-                    "word_count, sentence_count, char_count, avg_word_length, "
-                    "avg_sentence_length, shortness_score, lexical_diversity, "
-                    "sentiment_polarity, sentiment_subjectivity, positive_word_count, "
-                    "negative_word_count, positive_word_ratio, negative_word_ratio, "
-                    "flesch_reading_ease, flesch_kincaid_grade."
-                ),
+            st.info(
+                "Select any **NLP features** you want to include. "
+                "Each checkbox corresponds to a single NLP feature."
             )
 
-            custom_features = selected_numeric.copy()
-            if include_nlp:
-                custom_features += NLP_FEATURES
+            selected_nlp = []
+            nlp_cols_layout = st.columns(3)
+            for i, feat in enumerate(NLP_FEATURES):
+                with nlp_cols_layout[i % 3]:
+                    checked = st.checkbox(
+                        feat,
+                        value=True,
+                        key=f"cust_nlp_{feat}",
+                    )
+                    if checked:
+                        selected_nlp.append(feat)
+
+            custom_features = selected_numeric + selected_nlp
 
             if not custom_features:
-                st.warning("No features selected yet – clustering will fail. Make sure to pick at least one.")
+                st.warning(
+                    "No features selected yet – clustering will fail. "
+                    "Make sure to pick at least one numeric or NLP feature."
+                )
 
             st.caption(
                 f"Custom feature subset selected (`feature_mode='custom'`). "
-                f"Total features: **{len(custom_features)}**"
+                f"Total features: **{len(custom_features)}** "
+                f"(Numeric: {len(selected_numeric)}, NLP: {len(selected_nlp)})"
             )
 
         # ------------------------------
@@ -1026,7 +1034,6 @@ class DemoApp:
 
         # ==========================================================
         # 4) TWO-STAGE WORKFLOW FOR ALL PCA-BASED METHODS
-        #    (PCA+KMeans, PCA+GMM, PCA+t-SNE+HDBSCAN)
         # ==========================================================
         if model_type in ("pca_kmeans", "pca_gmm", "tsne_hdbscan"):
             st.markdown("### Step 1: PCA Preview (choose components)")
@@ -1044,13 +1051,11 @@ class DemoApp:
 
             if st.button("▶ Run PCA preview"):
                 with st.spinner("Running PCA preview (full pipeline, using current run ID)..."):
-                    # regenerate preprocessed CSV for the chosen subset
                     df = preprocess_clustering_data(
                         PROJECT_ROOT,
                         subset_mode=subset_mode,
                     )
 
-                    # IMPORTANT: use the SAME run_id as final clustering
                     preview_run_id = run_id
 
                     analyzer = GeneralClusterAnalyzer(
@@ -1073,7 +1078,6 @@ class DemoApp:
                         / preview_base_name
                     )
 
-                    # Save preview location + settings to session_state
                     st.session_state.pca_preview_dir = str(preview_base_dir)
                     st.session_state.pca_preview_subset_mode = subset_mode
                     st.session_state.pca_preview_feature_mode = feature_mode
@@ -1117,7 +1121,6 @@ class DemoApp:
                     p = metrics["pca_params"]
                     chosen_k = p.get("chosen_n_components")
                     cum_var = p.get("cum_explained_at_chosen")
-                    # support both key names; your metrics use 'max_components'
                     max_k = p.get("max_n_components", None) or p.get("max_components", None)
 
                     if chosen_k is not None and cum_var is not None:
@@ -1135,7 +1138,6 @@ class DemoApp:
                 st.markdown("### Step 2: Select PCs and Run Clustering")
 
                 if max_k is None:
-                    # fallback: allow up to 20 if we don't know actual max
                     max_k = 20
 
                 options_k = list(range(2, max_k + 1))
@@ -1263,6 +1265,8 @@ class DemoApp:
         target_3d_map = {
             "pca_kmeans": "pca_target_projection_kmeans_3d.html",
             "pca_gmm": "pca_target_projection_gmm_3d.html",
+            # NEW: 3D t-SNE target projection
+            "tsne_hdbscan": "tsne_target_projection_3d.html",
         }
 
         explorer_2d_map = {
@@ -1283,7 +1287,7 @@ class DemoApp:
         }
 
         def render_cluster_tab(proj_dir: Path, context_label: str):
-            # ----- Load metrics (for PCA info etc.) -----
+            # ----- Load metrics (PCA + JSD info) -----
             metrics = None
             metrics_path = proj_dir.parent / "metrics.json"
             if metrics_path.exists():
@@ -1337,7 +1341,133 @@ class DemoApp:
                 else:
                     st.info("PCA feature contribution graph not found for this run.")
 
+            # ----- JSD visuals (all methods, with tabs) -----
+            if metrics and "jsd_stats" in metrics:
+                jsd_stats = metrics.get("jsd_stats", {})
+                cluster_labels = jsd_stats.get("cluster_labels", [])
+                per_feature = jsd_stats.get("per_feature", {})
+
+                if cluster_labels and per_feature:
+                    st.markdown("---")
+                    st.subheader(f"Jensen–Shannon Divergence — {context_label}")
+                    st.caption(
+                        "Higher JSD ⇒ clusters differ more on that feature."
+                    )
+
+                    features_all = sorted(list(per_feature.keys()))
+                    if not features_all:
+                        st.info("No JSD feature data found.")
+                    else:
+                        tab1, tab2 = st.tabs(
+                            ["🔢 Pairwise JSD Matrix", "📊 Feature JSD Summary"]
+                        )
+
+                        # -----------------------------------------
+                        # TAB 1 — Pairwise JSD Matrix
+                        # -----------------------------------------
+                        with tab1:
+                            st.subheader("Pairwise JSD (Between Clusters)")
+
+                            default_feat = "FSR" if "FSR" in features_all else features_all[0]
+                            selected_feature = st.selectbox(
+                                "Select feature",
+                                options=features_all,
+                                index=features_all.index(default_feat),
+                                key=f"jsd_matrix_feat_{context_label.replace(' ', '_')}",
+                            )
+
+                            mat = np.array(per_feature[selected_feature], dtype=float)
+                            if mat.ndim == 2 and mat.shape[0] == mat.shape[1]:
+                                labels = [f"C{c}" for c in cluster_labels]
+                                df_mat = pd.DataFrame(
+                                    mat,
+                                    index=labels,
+                                    columns=labels,
+                                )
+
+                                fig = px.imshow(
+                                    df_mat,
+                                    text_auto=".2f",
+                                    color_continuous_scale="Blues",
+                                    aspect="equal",
+                                    title=f"JSD Matrix for Feature: {selected_feature}",
+                                )
+                                st.plotly_chart(fig, use_container_width=True)
+
+                                st.write("Pairwise JSD values:")
+                                st.dataframe(df_mat.style.format("{:.3f}"))
+                            else:
+                                st.info(
+                                    f"Could not render JSD matrix for `{selected_feature}` "
+                                    f"(unexpected shape: {mat.shape})."
+                                )
+
+                        # -----------------------------------------
+                        # TAB 2 — Feature-Level Summary
+                        # -----------------------------------------
+                        with tab2:
+                            st.subheader(
+                                "Feature-Level JSD Score (Average Separation Power)"
+                            )
+
+                            rows = []
+                            for feat_name, matrix in per_feature.items():
+                                arr = np.array(matrix, dtype=float)
+                                if arr.ndim != 2 or arr.shape[0] != arr.shape[1]:
+                                    continue
+                                n = arr.shape[0]
+                                if n <= 1:
+                                    continue
+
+                                mask = ~np.eye(n, dtype=bool)
+                                off_diag = arr[mask]
+                                if off_diag.size == 0:
+                                    continue
+
+                                mean_jsd = float(off_diag.mean())
+                                rows.append({"feature": feat_name, "JSD score": mean_jsd})
+
+                            if rows:
+                                results_df = (
+                                    pd.DataFrame(rows)
+                                    .sort_values("JSD score", ascending=False)
+                                    .reset_index(drop=True)
+                                )
+
+                                fig2 = px.bar(
+                                    results_df,
+                                    x="feature",
+                                    y="JSD score",
+                                    title="Average JSD Score Per Feature",
+                                    text="JSD score",
+                                )
+                                fig2.update_traces(
+                                    texttemplate="%{text:.3f}", textposition="outside"
+                                )
+                                fig2.update_layout(
+                                    yaxis=dict(
+                                        range=[
+                                            0,
+                                            results_df["JSD score"].max() * 1.2,
+                                        ]
+                                    )
+                                )
+                                st.plotly_chart(fig2, use_container_width=True)
+
+                                st.dataframe(
+                                    results_df.style.format({"JSD score": "{:.4f}"})
+                                )
+                            else:
+                                st.info(
+                                    "No valid JSD matrices found to summarize by feature."
+                                )
+                else:
+                    st.markdown("---")
+                    st.subheader(f"Jensen–Shannon Divergence — {context_label}")
+                    st.info("`jsd_stats` found in metrics, but no usable data to visualize.")
+
             # ----- Cluster explorer (2D / 3D) -----
+            st.markdown("---")
             st.subheader(f"Cluster Explorer — {context_label}")
             st.caption(
                 "Use the legend to toggle clusters. The panel on the right updates with "
@@ -1365,11 +1495,16 @@ class DemoApp:
 
                 if len(modes) == 1:
                     if "3D" in modes:
-                        st.caption(
-                            "Only **3D** view available for this run.\n"
-                            "- PCA models: PC1 vs PC2 vs PC3\n"
-                            "- t-SNE model: tSNE1 vs tSNE2 vs tSNE3"
-                        )
+                        if model_type in ("pca_kmeans", "pca_gmm"):
+                            st.caption(
+                                "Only **3D** view available for this run.\n"
+                                "- PCA models: PC1 vs PC2 vs PC3"
+                            )
+                        else:
+                            st.caption(
+                                "Only **3D** t-SNE view available for this run "
+                                "(tSNE1 vs tSNE2 vs tSNE3)."
+                            )
                     else:
                         if model_type in ("pca_kmeans", "pca_gmm"):
                             st.caption(
@@ -1418,15 +1553,27 @@ class DemoApp:
 
             # ----- Target projection (2D / 3D) -----
             target_2d = proj_dir / target_2d_map[model_type]
+
+            # robust 3D detection
             target_3d = None
             if model_type in ("pca_kmeans", "pca_gmm"):
                 t3_name = target_3d_map.get(model_type)
-                target_3d = proj_dir / t3_name if t3_name else None
+                if t3_name:
+                    candidate = proj_dir / t3_name
+                    if candidate.exists():
+                        target_3d = candidate
+            elif model_type == "tsne_hdbscan":
+                # Look for common 3D t-SNE target filenames
+                for name in ["tsne_target_projection3d.html", "tsne_target_projection_3d.html"]:
+                    candidate = proj_dir / name
+                    if candidate.exists():
+                        target_3d = candidate
+                        break
 
             has_2d = target_2d.exists()
             has_3d = target_3d is not None and target_3d.exists()
 
-            if model_type in ("pca_kmeans", "pca_gmm") and (has_2d or has_3d):
+            if has_2d or has_3d:
                 modes = []
                 path_by_mode = {}
                 if has_2d:
@@ -1438,32 +1585,55 @@ class DemoApp:
 
                 if len(modes) == 1:
                     if "3D" in modes:
-                        st.caption(
-                            "Only **3D** target projection available "
-                            "(PC1 vs PC2 vs PC3; at least 3 principal components)."
-                        )
+                        if model_type in ("pca_kmeans", "pca_gmm"):
+                            st.caption(
+                                "Only **3D** target projection available "
+                                "(PC1 vs PC2 vs PC3; at least 3 principal components)."
+                            )
+                        else:
+                            st.caption(
+                                "Only **3D** t-SNE target projection available "
+                                "(tSNE1 vs tSNE2 vs tSNE3)."
+                            )
                     else:
-                        st.caption(
-                            "Only **2D** target projection available "
-                            "(PC1 vs PC2; fewer than 3 usable principal components "
-                            "or 3D file was not generated)."
-                        )
+                        if model_type in ("pca_kmeans", "pca_gmm"):
+                            st.caption(
+                                "Only **2D** target projection available "
+                                "(PC1 vs PC2; fewer than 3 usable principal components "
+                                "or 3D file was not generated)."
+                            )
+                        else:
+                            st.caption(
+                                "Only **2D** t-SNE target projection available "
+                                "(tSNE1 vs tSNE2)."
+                            )
 
                     html_str = path_by_mode[modes[0]].read_text(encoding="utf-8")
                     components.html(html_str, height=600, scrolling=True)
 
                 else:
-                    st.caption(
-                        "Switch between **2D (PC1 vs PC2)** and "
-                        "**3D (PC1 vs PC2 vs PC3)** target views."
-                    )
+                    if model_type in ("pca_kmeans", "pca_gmm"):
+                        st.caption(
+                            "Switch between **2D (PC1 vs PC2)** and "
+                            "**3D (PC1 vs PC2 vs PC3)** target views."
+                        )
+                    elif model_type == "tsne_hdbscan":
+                        st.caption(
+                            "Switch between **2D (tSNE1 vs tSNE2)** and "
+                            "**3D (tSNE1 vs tSNE2 vs tSNE3)** target views."
+                        )
+                    else:
+                        st.caption(
+                            "Switch between **2D** and **3D** target views."
+                        )
+
                     default_mode = "3D" if "3D" in modes else "2D"
                     default_index = modes.index(default_mode)
                     viz_mode = st.selectbox(
-                        "Visualization mode (PCA target projection)",
+                        "Visualization mode (target projection)",
                         options=modes,
                         index=default_index,
-                        key=f"pca_viz_mode_{context_label.replace(' ', '_')}",
+                        key=f"target_viz_mode_{context_label.replace(' ', '_')}",
                     )
 
                     html_str = path_by_mode[viz_mode].read_text(encoding="utf-8")
@@ -1474,7 +1644,7 @@ class DemoApp:
                     )
 
             else:
-                # Non-PCA methods or PCA with no HTML → fallback to 2D or PNG
+                # No HTML → fallback to PNG if available
                 if target_2d.exists():
                     if model_type == "tsne_hdbscan":
                         st.caption("t-SNE target projection is available in **2D** only.")
@@ -1500,6 +1670,8 @@ class DemoApp:
                 render_cluster_tab(asd_proj_dir, "ASD-only")
             else:
                 st.info("No ASD-only subclustering folder found (maybe no ASD rows).")
+
+
 
 
 def main():
