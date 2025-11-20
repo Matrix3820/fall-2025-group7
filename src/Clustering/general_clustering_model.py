@@ -34,14 +34,18 @@ from .visualization import (
     plot_ari_nmi_bar,
     plot_pca_feature_loadings,
     plot_pca_cluster_explorer,
+    plot_pca_cluster_explorer_3d,      # <<< NEW
     plot_aic_bic_vs_k,
     plot_gmm_uncertainty,
+    plot_pca_feature_contributions_streamlit,
     # t-SNE / HDBSCAN
     plot_tsne_projection,
     plot_tsne_projection_streamlit,
     plot_hdbscan_probability,
     plot_tsne_cluster_explorer,
+    plot_tsne_cluster_explorer_3d,     # <<< NEW
 )
+
 
 # -------------------------------------------------------------------
 # GLOBAL CONFIG (used only when running this file directly)
@@ -169,7 +173,7 @@ class GeneralClusterAnalyzer:
     Unified clustering pipeline supporting:
       - PCA + KMeans
       - PCA + GMM
-      - t-SNE + HDBSCAN
+      - PCA + t-SNE + HDBSCAN
 
     pca_n_components:
       - None → auto-select via variance explained (>=95%, min 2 PCs)
@@ -286,7 +290,7 @@ class GeneralClusterAnalyzer:
             n_selected = int(max(2, min(self.pca_n_components, max_components)))
             reason = f"manual override (user-selected: {self.pca_n_components})"
         else:
-            # smallest k s.t. cum_var[k-1] >= 0.98, but at least 2 PCs
+            # smallest k s.t. cum_var[k-1] >= 0.99, but at least 2 PCs
             auto_k = int(np.searchsorted(cum_var, 0.99) + 1)
             n_selected = max(2, min(auto_k, max_components))
             reason = f"auto-selected to reach ≥95% variance (k={auto_k})"
@@ -323,14 +327,20 @@ class GeneralClusterAnalyzer:
 
         # === full PCA + variance-based selection ===
         pca, X_full, n_pcs_selected, cum_var = self._run_full_pca(X, proj_dir)
-
+        # --- Streamlit feature-contribution bars (PC1–PC3) ---
+        plot_pca_feature_contributions_streamlit(
+            pca=pca,
+            feature_names=features,
+            save_path=feat_dir / "pca_feature_contributions_kmeans.html",
+            n_components=n_pcs_selected,
+            top_n=10,  # or None for all features
+        )
         # representation for clustering (k PCs)
         X_clust = X_full[:, :n_pcs_selected]
 
         # 2D & 3D coords for visualization
         X_2d = X_full[:, :2]
         X_3d = X_full[:, :3] if n_pcs_selected >= 3 else None
-
 
         # === Evaluate K range on chosen PC space ===
         silhouette_scores, db_scores, ari_scores, nmi_scores = [], [], [], []
@@ -483,16 +493,25 @@ class GeneralClusterAnalyzer:
         df_final.to_csv(save_dir / "processed_with_clusters.csv", index=False)
         print(f"      Saved full processed dataset → {save_dir / 'processed_with_clusters.csv'}")
 
-        # === Interactive PCA cluster explorer  ===
+        # === Interactive PCA cluster explorers (2D + 3D)  ===
         print("   → Building interactive PCA cluster explorer (KMeans)...")
+        # 2D explorer (uses first two PCs in X_clust)
         plot_pca_cluster_explorer(
             X_clust,
             df,
             numeric_cols=explorer_numeric_cols,
-            save_path=proj_dir / "pca_cluster_explorer_kmeans.html",
+            save_path=proj_dir / "pca_cluster_explorer_kmeans_2d.html",
             method_name="kmeans",
         )
-        print("      Interactive cluster explorer saved.")
+        # 3D explorer (only if we have ≥3 PCs)
+        if n_pcs_selected >= 3:
+            plot_pca_cluster_explorer_3d(
+                X_clust,
+                df,
+                numeric_cols=explorer_numeric_cols,
+                save_path=proj_dir / "pca_cluster_explorer_kmeans_3d.html",
+            )
+        print("      Interactive KMeans cluster explorers saved.")
 
         # === Metrics summary ===
         metrics = {
@@ -549,11 +568,17 @@ class GeneralClusterAnalyzer:
 
         # === full PCA + variance-based selection ===
         pca, X_full, n_pcs_selected, cum_var = self._run_full_pca(X, proj_dir)
-
+        # --- Streamlit feature-contribution bars (PC1–PC3) ---
+        plot_pca_feature_contributions_streamlit(
+            pca=pca,
+            feature_names=features,
+            save_path=feat_dir / "pca_feature_contributions_gmm.html",
+            n_components=n_pcs_selected,
+            top_n=10,
+        )
         X_clust = X_full[:, :n_pcs_selected]
         X_2d = X_full[:, :2]
         X_3d = X_full[:, :3] if n_pcs_selected >= 3 else None
-
 
         # === GMM model selection via BIC on chosen PC space ===
         n_components_range = range(2, 9)
@@ -716,16 +741,23 @@ class GeneralClusterAnalyzer:
             "gmm",
         )
 
-        # explorer (2D)
-        print("   → Building interactive PCA GMM cluster explorer...")
+        # explorers (2D + 3D)
+        print("   → Building interactive PCA GMM cluster explorers...")
         plot_pca_cluster_explorer(
             X_clust,
             df,
             numeric_cols=explorer_numeric_cols,
-            save_path=proj_dir / "pca_cluster_explorer_gmm.html",
+            save_path=proj_dir / "pca_cluster_explorer_gmm_2d.html",
             method_name="gmm",
         )
-        print("      Interactive PCA GMM cluster explorer saved.")
+        if n_pcs_selected >= 3:
+            plot_pca_cluster_explorer_3d(
+                X_clust,
+                df,
+                numeric_cols=explorer_numeric_cols,
+                save_path=proj_dir / "pca_cluster_explorer_gmm_3d.html",
+            )
+        print("      Interactive PCA GMM cluster explorers saved.")
 
         # save CSV
         print("   → Saving processed dataset with PCA + GMM clusters...")
@@ -765,15 +797,22 @@ class GeneralClusterAnalyzer:
         print(f"✓ Metrics + visuals saved in {save_dir}")
 
     # ----------------------------------------------------------------
-    # t-SNE + HDBSCAN
+    # PCA → t-SNE + HDBSCAN
     # ----------------------------------------------------------------
     def _run_tsne_hdbscan(self, df: pd.DataFrame, save_dir: Path):
+        """
+        Pipeline:
+          1) Run full PCA on chosen feature set
+          2) Select n_pcs for clustering (auto or user override)
+          3) Run t-SNE on the selected PC space
+          4) Run HDBSCAN on t-SNE embedding
+        """
         features = get_feature_list(self.feature_mode, self.custom_features)
         explorer_numeric_cols = get_explorer_numeric_cols(
             self.feature_mode, self.custom_features
         )
 
-        print("\n📊 [t-SNE + HDBSCAN] Selected features:")
+        print("\n📊 [PCA → t-SNE + HDBSCAN] Selected features:")
         for f in features:
             print(f"   • {f}")
         print(f"Total features: {len(features)}")
@@ -786,20 +825,99 @@ class GeneralClusterAnalyzer:
         for d in [proj_dir, feat_dir]:
             d.mkdir(parents=True, exist_ok=True)
 
-        print("   → Running t-SNE embedding (may take several minutes)...")
-        n_components = getattr(self, "tsne_n_components", 2)
+        # === 1) Full PCA + variance-based selection ===
+        print("   → Running full PCA before t-SNE...")
+        pca, X_full, n_pcs_selected, cum_var = self._run_full_pca(X, proj_dir)
+
+        # feature contributions (PC1–PC3) for Streamlit
+        plot_pca_feature_contributions_streamlit(
+            pca=pca,
+            feature_names=features,
+            save_path=feat_dir / "pca_feature_contributions_tsne_hdbscan.html",
+            n_components=n_pcs_selected,
+            top_n=10,
+        )
+
+        # PC space actually used for t-SNE + HDBSCAN
+        X_clust = X_full[:, :n_pcs_selected]
+
+        # === 2) Choose safe t-SNE dimensionality ===
+        requested_tsne = getattr(self, "tsne_n_components", 2) or 2
+
+        n_samples = X_clust.shape[0]
+        n_pcs = X_clust.shape[1]
+
+        # t-SNE's internal PCA needs n_components <= min(n_samples, n_features)
+        max_allowed = max(1, min(n_pcs, n_samples - 1))
+        n_tsne = max(1, min(requested_tsne, max_allowed))
+
+        if n_tsne < requested_tsne:
+            print(
+                f"   ⚠️ Requested t-SNE dims = {requested_tsne}, "
+                f"but only {max_allowed} are possible (samples={n_samples}, PCs={n_pcs}). "
+                f"Using n_components={n_tsne} instead."
+            )
+
+        if n_tsne < 2:
+            # Not enough data/PCs for a meaningful 2D embedding
+            print(
+                "   ⚠️ Too few points/PCs to run 2D t-SNE safely. "
+                "Assigning all points to a single cluster and skipping t-SNE/HDBSCAN."
+            )
+            df["cluster"] = 0
+
+            cluster_counts = df["cluster"].value_counts().sort_index()
+            metrics = {
+                "data_version": DATA_VERSION,
+                "model_type": self.model_type,
+                "feature_mode": self.feature_mode,
+                "method": "hdbscan",
+                "n_clusters": 1,
+                "n_noise": 0,
+                "unique_labels": [0],
+                "pca_params": {
+                    "max_components": int(X_full.shape[1]),
+                    "chosen_n_components": int(n_pcs_selected),
+                    "variance_threshold": 0.95,
+                    "cum_explained_at_chosen": float(cum_var[n_pcs_selected - 1]),
+                    "explained_variance_ratio": pca.explained_variance_ratio_.tolist(),
+                },
+                "tsne_params": {
+                    "effective_n_components": int(n_tsne),
+                    "requested_n_components": int(requested_tsne),
+                    "skipped": True,
+                },
+                "hdbscan_params": None,
+                "cluster_counts": cluster_counts.to_dict(),
+            }
+            with open(save_dir / "metrics.json", "w") as f:
+                json.dump(metrics, f, indent=2)
+            df.to_csv(save_dir / "processed_with_clusters.csv", index=False)
+            return
+
+        # Keep perplexity valid: must be < n_samples
+        base_perplexity = 30
+        max_perp = max(5, min(base_perplexity, n_samples - 1))
+        perplexity = max(5, min(max_perp, n_samples - 1))
+
+        print(
+            f"   → Running t-SNE embedding on PCA space "
+            f"(n_samples={n_samples}, PCs={n_pcs}, t-SNE dims={n_tsne}, "
+            f"perplexity={perplexity})..."
+        )
+
         tsne = TSNE(
-            n_components=n_components,
-            perplexity=30,
+            n_components=n_tsne,
+            perplexity=perplexity,
             learning_rate=200,
             max_iter=2000,
             random_state=42,
             verbose=1,
         )
+        X_tsne = tsne.fit_transform(X_clust)
 
-        X_tsne = tsne.fit_transform(X)
-
-        print("   → Running HDBSCAN clustering...")
+        # === 3) HDBSCAN on t-SNE embedding ===
+        print("   → Running HDBSCAN clustering on t-SNE embedding...")
         clusterer = hdbscan.HDBSCAN(min_cluster_size=15, min_samples=5)
         labels = clusterer.fit_predict(X_tsne)
         df["cluster"] = labels
@@ -809,6 +927,7 @@ class GeneralClusterAnalyzer:
         n_noise = int(np.sum(labels == -1))
         print(f"   ✓ Found {n_clusters} clusters (+ {n_noise} noise points)")
 
+        # === Cluster distribution plot ===
         print("   → Plotting cluster distribution...")
         plt.figure(figsize=(7, 4))
         cluster_counts = df["cluster"].value_counts().sort_index()
@@ -825,12 +944,13 @@ class GeneralClusterAnalyzer:
         plt.savefig(proj_dir / "hdbscan_cluster_distribution.pdf", dpi=300)
         plt.close()
 
+        # === t-SNE projections (2D or 3D) ===
         plot_tsne_projection(
             X_tsne,
             df,
             "cluster",
             proj_dir / "tsne_hdbscan_clusters.png",
-            title="HDBSCAN Clusters (2D t-SNE Projection)",
+            title="HDBSCAN Clusters (t-SNE Projection)",
         )
         if target_col in df.columns:
             plot_tsne_projection(
@@ -847,6 +967,7 @@ class GeneralClusterAnalyzer:
             proj_dir / "hdbscan_probability_map.png",
         )
 
+        # interactive (Streamlit, 2D)
         plot_tsne_projection_streamlit(
             X_tsne,
             df,
@@ -861,6 +982,7 @@ class GeneralClusterAnalyzer:
                 save_path=proj_dir / "tsne_target_projection.html",
             )
 
+        # === feature-level summaries (original feature space) ===
         plot_cluster_feature_means(
             df,
             features,
@@ -874,24 +996,39 @@ class GeneralClusterAnalyzer:
             "hdbscan",
         )
 
+        # === save CSV with PCs + t-SNE ===
         df_final = df.copy()
-        if X_tsne is not None:
-            df_final["tSNE1"] = X_tsne[:, 0]
+        for i in range(n_pcs_selected):
+            df_final[f"PC{i + 1}"] = X_full[:, i]
+        df_final["tSNE1"] = X_tsne[:, 0]
+        if X_tsne.shape[1] >= 2:
             df_final["tSNE2"] = X_tsne[:, 1]
-            if X_tsne.shape[1] >= 3:
-                df_final["tSNE3"] = X_tsne[:, 2]
+        if X_tsne.shape[1] >= 3:
+            df_final["tSNE3"] = X_tsne[:, 2]
+
         df_final.to_csv(save_dir / "processed_with_clusters.csv", index=False)
         print(f"Saved full processed dataset → {save_dir / 'processed_with_clusters.csv'}")
 
-        print("   → Building interactive t-SNE cluster explorer...")
+        # === interactive t-SNE cluster explorers (2D + 3D) ===
+        print("   → Building interactive t-SNE cluster explorers...")
+        # 2D explorer (UI expects this name)
         plot_tsne_cluster_explorer(
             X_tsne,
             df,
             numeric_cols=explorer_numeric_cols,
             save_path=proj_dir / "tsne_cluster_explorer_hdbscan.html",
         )
-        print("      Interactive t-SNE cluster explorer saved.")
+        # 3D explorer if we actually have 3 dims
+        if X_tsne.shape[1] >= 3:
+            plot_tsne_cluster_explorer_3d(
+                X_tsne,
+                df,
+                numeric_cols=explorer_numeric_cols,
+                save_path=proj_dir / "tsne_cluster_explorer_hdbscan_3d.html",
+            )
+        print("      Interactive t-SNE cluster explorers saved.")
 
+        # === metrics (with PCA + t-SNE info) ===
         metrics = {
             "data_version": DATA_VERSION,
             "model_type": self.model_type,
@@ -900,11 +1037,19 @@ class GeneralClusterAnalyzer:
             "n_clusters": n_clusters,
             "n_noise": n_noise,
             "unique_labels": unique_clusters.tolist(),
+            "pca_params": {
+                "max_components": int(X_full.shape[1]),
+                "chosen_n_components": int(n_pcs_selected),
+                "variance_threshold": 0.95,
+                "cum_explained_at_chosen": float(cum_var[n_pcs_selected - 1]),
+                "explained_variance_ratio": pca.explained_variance_ratio_.tolist(),
+            },
             "tsne_params": {
-                     "n_components": int(n_components),
-                     "perplexity": 30,
-                     "learning_rate": 200,
-                     "n_iter": 2000,
+                "requested_n_components": int(requested_tsne),
+                "effective_n_components": int(n_tsne),
+                "perplexity": float(perplexity),
+                "learning_rate": 200,
+                "n_iter": 2000,
             },
             "hdbscan_params": {
                 "min_cluster_size": 15,
