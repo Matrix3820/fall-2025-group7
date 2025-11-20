@@ -9,6 +9,7 @@ from pathlib import Path
 # from explainability_analysis import ExplainabilityAnalyzer
 import plotly.express as px
 import plotly.graph_objects as go
+from sklearn.metrics import roc_curve, auc
 
 data_version = "Data_v7-1"
 model_version = "V7-1"
@@ -200,7 +201,51 @@ class ModelVisualizer:
         plt.tight_layout()
         plt.savefig(self.viz_dir / f'model_performance_{model_version}.png', dpi=300, bbox_inches='tight')
         plt.close()
-    
+
+    def create_auc_roc_curve(self):
+        """Create and save AUC–ROC curve using saved TEST predictions."""
+
+        # Load saved predictions from Results/.../predictions/
+        preds_path = (
+                self.results_dir / "predictions" / f"test_predictions_{model_version}.csv"
+        )
+
+        if not preds_path.exists():
+            print(f"ERROR: Test predictions not found at:\n{preds_path}")
+            return
+
+        df = pd.read_csv(preds_path)
+
+        # Ensure required columns exist
+        if "td_or_asd" not in df.columns or "prediction_probability" not in df.columns:
+            print("ERROR: Required columns ('td_or_asd', 'prediction_probability') missing.")
+            return
+
+        # Extract labels + probabilities
+        y_true = df["td_or_asd"]
+        y_prob = df["prediction_probability"]
+
+        # Compute ROC curve
+        fpr, tpr, _ = roc_curve(y_true, y_prob)
+        roc_auc = auc(fpr, tpr)
+
+        plt.figure(figsize=(8, 6))
+        plt.plot(fpr, tpr, label=f"AUC = {roc_auc:.3f}", linewidth=2)
+        plt.plot([0, 1], [0, 1], "k--", label="Random", alpha=0.6)
+
+        plt.xlabel("False Positive Rate")
+        plt.ylabel("True Positive Rate")
+        plt.title(f"AUC–ROC Curve – Model {model_version}")
+        plt.legend(loc="lower right")
+        plt.grid(True)
+
+        # Save output
+        out = self.viz_dir / f"auc_roc_curve_{model_version}.png"
+        plt.savefig(out, dpi=300, bbox_inches="tight")
+        plt.close()
+
+        print(f"AUC–ROC curve saved to: {out}")
+
     def create_confusion_matrix_plot(self, test_results_path=None):
         if test_results_path is None:
             test_results_path = self.results_dir / f'test_results_{model_version}.json'
@@ -438,6 +483,68 @@ class ModelVisualizerInteractive(ModelVisualizer):
         )
         return fig
 
+    def fig_auc_roc_test(self):
+        """
+        Plotly ROC curve using TEST DATA loaded from saved predictions CSV.
+        Always loads:
+           Results/<model_version>/predictions/test_predictions_<model_version>.csv
+        Saves PNG + returns Plotly figure.
+        """
+
+        # Path to saved predictions
+        preds_path = (
+                self.results_dir / "predictions" / f"test_predictions_{model_version}.csv"
+        )
+
+        if not preds_path.exists():
+            print(f"ERROR: Test predictions CSV not found at:\n{preds_path}")
+            return go.Figure()
+
+        # Load predictions
+        df = pd.read_csv(preds_path)
+
+        if "td_or_asd" not in df.columns or "prediction_probability" not in df.columns:
+            print("ERROR: Columns 'td_or_asd' and 'prediction_probability' are required.")
+            return go.Figure()
+
+        # Extract true labels + predicted probabilities
+        y_true = df["td_or_asd"]
+        y_prob = df["prediction_probability"]
+
+        # Compute ROC
+        fpr, tpr, _ = roc_curve(y_true, y_prob)
+        roc_auc = auc(fpr, tpr)
+
+        # Build Plotly figure
+        fig = go.Figure()
+
+        fig.add_trace(go.Scatter(
+            x=fpr,
+            y=tpr,
+            mode="lines",
+            name=f"AUC = {roc_auc:.3f}",
+            line=dict(width=3)
+        ))
+
+        # Random baseline
+        fig.add_trace(go.Scatter(
+            x=[0, 1],
+            y=[0, 1],
+            mode="lines",
+            name="Random",
+            line=dict(width=1, dash="dash")
+        ))
+
+        fig.update_layout(
+            title=f"Test AUC–ROC Curve — {self.viz_dir.parent.name}",
+            xaxis_title="False Positive Rate",
+            yaxis_title="True Positive Rate",
+            height=500,
+            template="plotly_white"
+        )
+
+        return fig
+
     def fig_feature_importance_by_target(self, explainability_data, top_k=15):
         # Uses the same keys your static method expected
         top_features = explainability_data['top_features'][:top_k]
@@ -545,6 +652,9 @@ def create_visualizations():
     
     print("Creating model performance plot...")
     visualizer.create_model_performance_plot(training_results)
+
+    print("Creating AUC ROC plot...")
+    visualizer.create_auc_roc_curve()
     
     print("Creating confusion matrix plot...")
     visualizer.create_confusion_matrix_plot()

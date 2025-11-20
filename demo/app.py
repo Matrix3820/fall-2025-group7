@@ -894,6 +894,8 @@ class DemoApp:
 
                 st.plotly_chart(visualizer.fig_classification_report(self.test_results), use_container_width=True)
 
+                st.plotly_chart(visualizer.fig_auc_roc_test(), use_container_width=True)
+
             else:
                 st.info("Test Report not found. Run predict.py to generate a test report.")
 

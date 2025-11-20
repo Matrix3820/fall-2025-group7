@@ -1,8 +1,8 @@
 import os
 import sys
 import pandas as pd
-from data_preprocessor import preprocess_training_data
-from xgboost_model import train_xgboost_model
+from .data_preprocessor import preprocess_training_data
+from .xgboost_model import train_xgboost_model
 
 data_version = "Data_v7-1"
 model_version = "V7-1"
