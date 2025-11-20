@@ -201,6 +201,16 @@ if "available_models" not in st.session_state:
 if "available_datasets" not in st.session_state:
     st.session_state.available_datasets = _discover_datasets()
 
+# For PCA preview stage
+if "pca_preview_dir" not in st.session_state:
+    st.session_state.pca_preview_dir = ""
+if "pca_preview_subset_mode" not in st.session_state:
+    st.session_state.pca_preview_subset_mode = None
+if "pca_preview_feature_mode" not in st.session_state:
+    st.session_state.pca_preview_feature_mode = None
+if "pca_preview_model_type" not in st.session_state:
+    st.session_state.pca_preview_model_type = None
+
 
 class DemoApp:
     def __init__(self):
@@ -843,7 +853,7 @@ class DemoApp:
 
     def show_cluster_analysis_page(self):
         st.header("Cluster Analysis 🧩")
-        st.caption("Unified UI for PCA+KMeans, PCA+GMM, and t-SNE+HDBSCAN")
+        st.caption("Unified UI for PCA+KMeans, PCA+GMM, and PCA+t-SNE+HDBSCAN")
 
         # ------------------------------
         # 1) Method selection
@@ -853,7 +863,7 @@ class DemoApp:
             [
                 "PCA + KMeans (V1)",
                 "PCA + GMM (V2)",
-                "t-SNE + HDBSCAN (V3)",
+                "PCA + t-SNE + HDBSCAN (V3)",
             ],
             index=2,
         )
@@ -861,7 +871,7 @@ class DemoApp:
         method_map = {
             "PCA + KMeans (V1)": "pca_kmeans",
             "PCA + GMM (V2)": "pca_gmm",
-            "t-SNE + HDBSCAN (V3)": "tsne_hdbscan",
+            "PCA + t-SNE + HDBSCAN (V3)": "tsne_hdbscan",
         }
         model_type = method_map[method_label]
 
@@ -888,7 +898,7 @@ class DemoApp:
 
         st.caption(
             f"Current subset mode: **{subset_mode}** "
-            f"(this controls how `data_preprocessed_clustering.csv` is generated)."
+            f"(this controls how `data_preprocessed_general.csv` is generated)."
         )
 
         # ------------------------------
@@ -990,42 +1000,19 @@ class DemoApp:
                 "Results/Clustering/general/"
             ),
         )
-        # ------------------------------
-        # 3a) Optional PCA component override (for PCA methods only)
-        # ------------------------------
-        pca_n_components = None  # default → auto by variance
+
+        # Defaults for PCA / t-SNE
+        pca_n_components = None  # will be set from UI for PCA models
         tsne_n_components = 2    # default → 2D t-SNE
 
-        if model_type in ("pca_kmeans", "pca_gmm"):
-            st.markdown("#### PCA components for clustering")
-            st.caption(
-                "Default is **auto** (selects the smallest number of PCs that reach "
-                "the variance threshold). You can override it after seeing the "
-                "default run."
-            )
-
-            override_pca = st.checkbox(
-                "Select PCA components",
-                value=False,
-                help="When checked, clustering will use exactly this many principal components.",
-            )
-
-            if override_pca:
-                pca_n_components = st.selectbox(
-                    "Number of PCA components (for clustering)",
-                    options=list(range(2, 21)),  # 2..20
-                    index=0,
-                )
-
         # ------------------------------
-        # 3b) t-SNE dimensionality (for t-SNE + HDBSCAN only)
+        # 3b) t-SNE dimensionality (for PCA + t-SNE + HDBSCAN only)
         # ------------------------------
         if model_type == "tsne_hdbscan":
             st.markdown("#### t-SNE dimensionality")
             st.caption(
-                "Choose whether to embed into **2D** (tSNE1, tSNE2) or **3D** "
-                "(tSNE1, tSNE2, tSNE3). Cluster explorer will always provide a 2D view, "
-                "and adds a 3D explorer when 3D t-SNE is selected."
+                "Choose whether to embed selected PCA components into **2D** (tSNE1, tSNE2) "
+                "or **3D** (tSNE1, tSNE2, tSNE3)."
             )
             tsne_dim_choice = st.radio(
                 "t-SNE embedding dimensions",
@@ -1037,40 +1024,213 @@ class DemoApp:
 
         st.markdown("---")
 
-        # ------------------------------
-        # 4) Run button
-        # ------------------------------
-        if st.button("🚀 Run clustering"):
-            with st.spinner("Running clustering pipeline... this may take a few minutes."):
-
-                # Always regenerate preprocessed CSV based on subset_mode
-                df = preprocess_clustering_data(
-                    PROJECT_ROOT,
-                    subset_mode=subset_mode,
+        # ==========================================================
+        # 4) TWO-STAGE WORKFLOW FOR ALL PCA-BASED METHODS
+        #    (PCA+KMeans, PCA+GMM, PCA+t-SNE+HDBSCAN)
+        # ==========================================================
+        if model_type in ("pca_kmeans", "pca_gmm", "tsne_hdbscan"):
+            st.markdown("### Step 1: PCA Preview (choose components)")
+            if model_type == "tsne_hdbscan":
+                st.caption(
+                    "First run PCA on the chosen subset + feature set. "
+                    "This preview shows how many PCs are needed. In the next step, "
+                    "those PCs will be used as input to t-SNE + HDBSCAN."
+                )
+            else:
+                st.caption(
+                    "First run PCA on the chosen subset + feature set. "
+                    "This will generate a PCA variance plot and suggested number of PCs."
                 )
 
-                analyzer = GeneralClusterAnalyzer(
-                    project_root=PROJECT_ROOT,
-                    model_type=model_type,
-                    feature_mode=feature_mode,
-                    run_id=run_id,
-                    custom_features=custom_features,
-                    pca_n_components=pca_n_components,
-                    tsne_n_components=tsne_n_components,
-                )
-                analyzer.run_pipeline(df)
+            if st.button("▶ Run PCA preview"):
+                with st.spinner("Running PCA preview (full pipeline, using current run ID)..."):
+                    # regenerate preprocessed CSV for the chosen subset
+                    df = preprocess_clustering_data(
+                        PROJECT_ROOT,
+                        subset_mode=subset_mode,
+                    )
 
-                base_name = f"{model_type}_{feature_mode}_{run_id}"
-                base_dir = (
-                    PROJECT_ROOT
-                    / "Results"
-                    / "Clustering"
-                    / "general"
-                    / base_name
-                )
-                st.session_state.cluster_base_dir = str(base_dir)
+                    # IMPORTANT: use the SAME run_id as final clustering
+                    preview_run_id = run_id
 
-            st.success(f"✅ Clustering completed and saved under:\n`{base_dir}`")
+                    analyzer = GeneralClusterAnalyzer(
+                        project_root=PROJECT_ROOT,
+                        model_type=model_type,
+                        feature_mode=feature_mode,
+                        run_id=preview_run_id,
+                        custom_features=custom_features,
+                        pca_n_components=None,            # auto for preview
+                        tsne_n_components=tsne_n_components,  # relevant for tsne_hdbscan
+                    )
+                    analyzer.run_pipeline(df)
+
+                    preview_base_name = f"{model_type}_{feature_mode}_{preview_run_id}"
+                    preview_base_dir = (
+                        PROJECT_ROOT
+                        / "Results"
+                        / "Clustering"
+                        / "general"
+                        / preview_base_name
+                    )
+
+                    # Save preview location + settings to session_state
+                    st.session_state.pca_preview_dir = str(preview_base_dir)
+                    st.session_state.pca_preview_subset_mode = subset_mode
+                    st.session_state.pca_preview_feature_mode = feature_mode
+                    st.session_state.pca_preview_model_type = model_type
+
+                st.success(f"✅ PCA preview completed and saved under:\n`{preview_base_dir}`")
+
+            # --------------------------
+            # Show PCA preview information if available
+            # --------------------------
+            preview_dir_str = st.session_state.get("pca_preview_dir", "")
+            if (
+                preview_dir_str
+                and st.session_state.pca_preview_model_type == model_type
+                and st.session_state.pca_preview_subset_mode == subset_mode
+                and st.session_state.pca_preview_feature_mode == feature_mode
+            ):
+                preview_dir = Path(preview_dir_str)
+                td_asd_dir = preview_dir / "td_asd_clusters"
+                proj_dir = td_asd_dir / "projections"
+
+                st.markdown("### PCA Preview Results")
+                metrics = None
+                metrics_path = td_asd_dir / "metrics.json"
+                if metrics_path.exists():
+                    try:
+                        with open(metrics_path, "r") as f:
+                            metrics = json.load(f)
+                    except Exception:
+                        metrics = None
+
+                var_img = proj_dir / "pca_variance.png"
+                if var_img.exists():
+                    st.image(str(var_img), use_container_width=True)
+                else:
+                    st.info("PCA variance plot not found in the preview run.")
+
+                suggested_k = None
+                max_k = None
+                if metrics and "pca_params" in metrics:
+                    p = metrics["pca_params"]
+                    chosen_k = p.get("chosen_n_components")
+                    cum_var = p.get("cum_explained_at_chosen")
+                    # support both key names; your metrics use 'max_components'
+                    max_k = p.get("max_n_components", None) or p.get("max_components", None)
+
+                    if chosen_k is not None and cum_var is not None:
+                        suggested_k = int(chosen_k)
+                        try:
+                            pct = float(cum_var) * 100.0
+                            st.caption(
+                                f"Preview suggests **{int(chosen_k)}** components "
+                                f"(cumulative explained variance ≈ **{pct:.1f}%**)."
+                            )
+                        except Exception:
+                            pass
+
+                st.markdown("---")
+                st.markdown("### Step 2: Select PCs and Run Clustering")
+
+                if max_k is None:
+                    # fallback: allow up to 20 if we don't know actual max
+                    max_k = 20
+
+                options_k = list(range(2, max_k + 1))
+                if suggested_k and suggested_k in options_k:
+                    default_index = options_k.index(suggested_k)
+                else:
+                    default_index = 0
+
+                help_text = (
+                    "These components will be used as input to KMeans."
+                    if model_type == "pca_kmeans"
+                    else "These components will be used as input to GMM."
+                    if model_type == "pca_gmm"
+                    else "These components will be used as input to t-SNE + HDBSCAN."
+                )
+
+                pca_n_components = st.selectbox(
+                    "Number of PCA components to use for clustering",
+                    options=options_k,
+                    index=default_index,
+                    help=help_text,
+                )
+
+                st.caption(
+                    "Once satisfied with the PCA choice, run the full clustering pipeline below."
+                )
+
+                if st.button("🚀 Run clustering (using selected PCs)"):
+                    with st.spinner("Running clustering pipeline with selected PCs..."):
+                        df = preprocess_clustering_data(
+                            PROJECT_ROOT,
+                            subset_mode=subset_mode,
+                        )
+
+                        analyzer = GeneralClusterAnalyzer(
+                            project_root=PROJECT_ROOT,
+                            model_type=model_type,
+                            feature_mode=feature_mode,
+                            run_id=run_id,
+                            custom_features=custom_features,
+                            pca_n_components=pca_n_components,
+                            tsne_n_components=tsne_n_components,
+                        )
+                        analyzer.run_pipeline(df)
+
+                        base_name = f"{model_type}_{feature_mode}_{run_id}"
+                        base_dir = (
+                            PROJECT_ROOT
+                            / "Results"
+                            / "Clustering"
+                            / "general"
+                            / base_name
+                        )
+                        st.session_state.cluster_base_dir = str(base_dir)
+
+                    st.success(f"✅ Clustering completed and saved under:\n`{base_dir}`")
+            else:
+                st.info(
+                    "Run the PCA preview above to see the variance explained and choose "
+                    "how many principal components to use for clustering."
+                )
+
+        # ==========================================================
+        # 4b) ONE-STAGE WORKFLOW FOR NON-PCA METHODS (none currently)
+        # ==========================================================
+        else:
+            if st.button("🚀 Run clustering"):
+                with st.spinner("Running clustering pipeline... this may take a few minutes."):
+                    df = preprocess_clustering_data(
+                        PROJECT_ROOT,
+                        subset_mode=subset_mode,
+                    )
+
+                    analyzer = GeneralClusterAnalyzer(
+                        project_root=PROJECT_ROOT,
+                        model_type=model_type,
+                        feature_mode=feature_mode,
+                        run_id=run_id,
+                        custom_features=custom_features,
+                        pca_n_components=None,
+                        tsne_n_components=tsne_n_components,
+                    )
+                    analyzer.run_pipeline(df)
+
+                    base_name = f"{model_type}_{feature_mode}_{run_id}"
+                    base_dir = (
+                        PROJECT_ROOT
+                        / "Results"
+                        / "Clustering"
+                        / "general"
+                        / base_name
+                    )
+                    st.session_state.cluster_base_dir = str(base_dir)
+
+                st.success(f"✅ Clustering completed and saved under:\n`{base_dir}`")
 
         # ------------------------------
         # 5) Show visuals from last run
@@ -1133,34 +1293,56 @@ class DemoApp:
                 except Exception:
                     metrics = None
 
-            # ----- PCA variance explained (PCA methods only) -----
-            if model_type in ("pca_kmeans", "pca_gmm"):
-                st.subheader(f"PCA Variance Explained — {context_label}")
+            # ----- PCA summary + feature contributions (for all PCA-based runs) -----
+            if metrics and "pca_params" in metrics:
+                st.subheader(f"PCA Summary — {context_label}")
+
+                # Variance Explained
+                st.markdown("### Variance Explained")
                 var_img = proj_dir / "pca_variance.png"
                 if var_img.exists():
                     st.image(str(var_img), use_container_width=True)
                 else:
                     st.info("PCA variance plot not found in this run.")
 
-                # (2) Show chosen #PCs and cumulative variance from metrics.json
-                if metrics and "pca_params" in metrics:
-                    p = metrics["pca_params"]
-                    chosen_k = p.get("chosen_n_components")
-                    cum_var = p.get("cum_explained_at_chosen")
-                    if chosen_k is not None and cum_var is not None:
-                        try:
-                            pct = float(cum_var) * 100.0
-                            st.caption(
-                                f"Using **{int(chosen_k)}** principal components "
-                                f"(cumulative explained variance ≈ **{pct:.1f}%**)."
-                            )
-                        except Exception:
-                            pass
+                p = metrics["pca_params"]
+                chosen_k = p.get("chosen_n_components")
+                cum_var = p.get("cum_explained_at_chosen")
+                if chosen_k is not None and cum_var is not None:
+                    pct = float(cum_var) * 100.0
+                    st.caption(
+                        f"Using **{int(chosen_k)}** PCs "
+                        f"(cumulative explained variance ≈ **{pct:.1f}%**)."
+                    )
 
                 st.markdown("---")
+                st.markdown("### Feature Contributions to PCs")
+                st.caption(
+                    "Top contributing features for PC1/PC2/PC3. "
+                    "Use this to explain why clusters separate in the PCA/t-SNE plots."
+                )
+
+                feat_dir = proj_dir.parent / "feature_visuals"
+                contrib_file_map = {
+                    "pca_kmeans": "pca_feature_contributions_kmeans.html",
+                    "pca_gmm": "pca_feature_contributions_gmm.html",
+                    "tsne_hdbscan": "pca_feature_contributions_tsne_hdbscan.html",
+                }
+                contrib_name = contrib_file_map.get(model_type)
+                contrib_html_path = feat_dir / contrib_name if contrib_name else None
+
+                if contrib_html_path and contrib_html_path.exists():
+                    html_str = contrib_html_path.read_text(encoding="utf-8")
+                    components.html(html_str, height=550, scrolling=False)
+                else:
+                    st.info("PCA feature contribution graph not found for this run.")
 
             # ----- Cluster explorer (2D / 3D) -----
             st.subheader(f"Cluster Explorer — {context_label}")
+            st.caption(
+                "Use the legend to toggle clusters. The panel on the right updates with "
+                "cluster-wise stats (TD/ASD counts + numeric feature summaries)."
+            )
 
             explorer_2d = proj_dir / explorer_2d_map[model_type]
             explorer_3d_name = explorer_3d_map.get(model_type)
@@ -1181,12 +1363,12 @@ class DemoApp:
                     modes.append("3D")
                     path_by_mode["3D"] = explorer_3d
 
-                # (3) Clear 2D vs 3D explanation
                 if len(modes) == 1:
                     if "3D" in modes:
                         st.caption(
-                            "Only **3D** view available for this run "
-                            "(PC1 vs PC2 vs PC3; at least 3 principal components)."
+                            "Only **3D** view available for this run.\n"
+                            "- PCA models: PC1 vs PC2 vs PC3\n"
+                            "- t-SNE model: tSNE1 vs tSNE2 vs tSNE3"
                         )
                     else:
                         if model_type in ("pca_kmeans", "pca_gmm"):
@@ -1197,8 +1379,8 @@ class DemoApp:
                             )
                         else:
                             st.caption(
-                                "Use the selector below to switch between "
-                                "**2D (PC1 vs PC2)** and **3D (PC1 vs PC2 vs PC3)** views."
+                                "Only **2D** t-SNE view available for this run "
+                                "(tSNE1 vs tSNE2)."
                             )
 
                     html_str = path_by_mode[modes[0]].read_text(encoding="utf-8")
