@@ -158,13 +158,17 @@ class NLPFeatureExtractor:
 # -------------------------------------------------------------------
 # MAIN PREPROCESSING FUNCTION (GENERAL)
 # -------------------------------------------------------------------
-def preprocess_clustering_data(project_root: Path) -> pd.DataFrame:
+def preprocess_clustering_data(
+    project_root: Path,
+    subset_mode: str = "full",   # "full", "fsr_overlap", "fsr_nonoverlap"
+) -> pd.DataFrame:
     """
     General preprocessing for ALL clustering models.
 
     Steps:
-    - Load raw CSV from: data/Data_Clustering/csvs/<RAW_CSV_NAME>
+    - Load raw CSV from: data/Data_Clustering/<RAW_CSV_NAME>
     - Drop NaNs in numeric + text + td_or_asd
+    - Optionally subset by FSR overlap / non-overlap region
     - Keep original 7 numeric columns
     - Add 7 scaled numeric columns
     - Keep td_or_asd
@@ -173,6 +177,10 @@ def preprocess_clustering_data(project_root: Path) -> pd.DataFrame:
           data/Data_Clustering/data_preprocessed_clustering.csv
     - Save preprocessing_info.json under Results/Clustering/preprocessing/
     """
+    if subset_mode not in ("full", "fsr_overlap", "fsr_nonoverlap"):
+        raise ValueError(f"Invalid subset_mode='{subset_mode}'. "
+                         f"Use 'full', 'fsr_overlap', or 'fsr_nonoverlap'.")
+
     # ----------------------------------------------------------------
     # 1. Load raw data
     # ----------------------------------------------------------------
@@ -202,21 +210,75 @@ def preprocess_clustering_data(project_root: Path) -> pd.DataFrame:
     print(f"After dropping NaNs: {df_filtered.shape}")
 
     # ----------------------------------------------------------------
-    # 4. Scale numeric features
+    # 3a. Optional FSR overlap / non-overlap subset
+    # ----------------------------------------------------------------
+    df_subset = df_filtered.copy()
+    overlap_info = None
+
+    if subset_mode in ("fsr_overlap", "fsr_nonoverlap"):
+        # Compute class-wise FSR ranges
+        class0 = df_filtered[df_filtered['td_or_asd'] == 0]['FSR']
+        class1 = df_filtered[df_filtered['td_or_asd'] == 1]['FSR']
+
+        if class0.empty or class1.empty:
+            print("⚠️ One of the classes has no rows after filtering; "
+                  "falling back to FULL dataset for clustering.")
+        else:
+            min0, max0 = class0.min(), class0.max()
+            min1, max1 = class1.min(), class1.max()
+
+            overlap_min = max(min0, min1)
+            overlap_max = min(max0, max1)
+
+            if overlap_min <= overlap_max:
+                mask_overlap = (
+                    (df_filtered['FSR'] >= overlap_min) &
+                    (df_filtered['FSR'] <= overlap_max)
+                )
+
+                if subset_mode == "fsr_overlap":
+                    df_subset = df_filtered[mask_overlap].reset_index(drop=True)
+                    print(f"[FSR Overlap] Range: [{overlap_min:.4f}, {overlap_max:.4f}] "
+                          f"→ {df_subset.shape[0]} rows")
+                elif subset_mode == "fsr_nonoverlap":
+                    df_subset = df_filtered[~mask_overlap].reset_index(drop=True)
+                    print(f"[FSR Non-overlap] Removing range "
+                          f"[{overlap_min:.4f}, {overlap_max:.4f}] "
+                          f"→ {df_subset.shape[0]} rows")
+
+                overlap_info = {
+                    "subset_mode": subset_mode,
+                    "overlap_min": float(overlap_min),
+                    "overlap_max": float(overlap_max),
+                    "subset_shape": list(df_subset.shape),
+                }
+            else:
+                print("⚠️ No FSR overlap between class 0 and class 1; "
+                      "falling back to FULL dataset for clustering.")
+                subset_mode = "full"
+
+    if subset_mode == "full":
+        print("Using FULL participant set for clustering (no FSR subsetting).")
+
+    # At this point, df_subset is what we actually preprocess
+    print(f"Subset used for preprocessing: {df_subset.shape} (mode='{subset_mode}')")
+
+    # ----------------------------------------------------------------
+    # 4. Scale numeric features (on chosen subset)
     # ----------------------------------------------------------------
     scaler = StandardScaler()
-    scaled_data = scaler.fit_transform(df_filtered[NUMERIC_COLUMNS])
+    scaled_data = scaler.fit_transform(df_subset[NUMERIC_COLUMNS])
     scaled_cols = [f"{c}_scaled" for c in NUMERIC_COLUMNS]
     scaled_df = pd.DataFrame(scaled_data, columns=scaled_cols)
 
     # ----------------------------------------------------------------
-    # 5. NLP feature extraction from text column
+    # 5. NLP feature extraction from text column (on chosen subset)
     # ----------------------------------------------------------------
     nlp_extractor = NLPFeatureExtractor()
     nlp_features_list = []
 
-    print(f"Extracting NLP features from `{TEXT_COLUMN}`...")
-    for text in df_filtered[TEXT_COLUMN]:
+    print(f"Extracting NLP features from `{TEXT_COLUMN}` on subset...")
+    for text in df_subset[TEXT_COLUMN]:
         feats = nlp_extractor.extract_nlp_features(text)
         nlp_features_list.append(feats)
 
@@ -228,9 +290,9 @@ def preprocess_clustering_data(project_root: Path) -> pd.DataFrame:
     # Order: 7 original numeric → 7 scaled numeric → td_or_asd → NLP features
     df_final = pd.concat(
         [
-            df_filtered[NUMERIC_COLUMNS].reset_index(drop=True),
+            df_subset[NUMERIC_COLUMNS].reset_index(drop=True),
             scaled_df.reset_index(drop=True),
-            df_filtered[['td_or_asd']].reset_index(drop=True),
+            df_subset[['td_or_asd']].reset_index(drop=True),
             nlp_df.reset_index(drop=True),
         ],
         axis=1,
@@ -257,14 +319,17 @@ def preprocess_clustering_data(project_root: Path) -> pd.DataFrame:
     info = {
         "raw_path": str(data_path),
         "preprocessed_path": str(preprocessed_path),
-        "original_shape": df.shape,
-        "filtered_shape": df_filtered.shape,
-        "dropped_rows": int(df.shape[0] - df_filtered.shape[0]),
+        "original_shape": list(df.shape),
+        "filtered_shape_after_nan_drop": list(df_filtered.shape),
+        "subset_mode": subset_mode,
+        "subset_shape": list(df_subset.shape),
+        "dropped_rows_total": int(df.shape[0] - df_subset.shape[0]),
         "numeric_original_columns": NUMERIC_COLUMNS,
         "scaled_columns": scaled_cols,
         "text_column": TEXT_COLUMN,
         "nlp_feature_columns": list(nlp_df.columns),
         "final_columns": list(df_final.columns),
+        "fsr_overlap_info": overlap_info,
     }
 
     with open(results_dir / "preprocessing_info.json", "w") as f:
@@ -281,4 +346,5 @@ if __name__ == "__main__":
     project_root = current_dir.parent.parent
 
     print("\n=== Running General Clustering Preprocessing ===\n")
-    preprocess_clustering_data(project_root)
+    # Default run: full participants
+    preprocess_clustering_data(project_root, subset_mode="full")
