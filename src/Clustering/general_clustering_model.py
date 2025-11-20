@@ -34,16 +34,22 @@ from .visualization import (
     plot_ari_nmi_bar,
     plot_pca_feature_loadings,
     plot_pca_cluster_explorer,
-    plot_pca_cluster_explorer_3d,      # <<< NEW
     plot_aic_bic_vs_k,
     plot_gmm_uncertainty,
     plot_pca_feature_contributions_streamlit,
     # t-SNE / HDBSCAN
     plot_tsne_projection,
-    plot_tsne_projection_streamlit,
     plot_hdbscan_probability,
+    plot_tsne_projection_streamlit,
     plot_tsne_cluster_explorer,
-    plot_tsne_cluster_explorer_3d,     # <<< NEW
+    plot_pca_cluster_explorer_3d,
+    plot_tsne_cluster_explorer_3d,
+    # NEW: 3D t-SNE projections
+    plot_tsne_projection_3d,
+    plot_tsne_projection_streamlit_3d,
+    # (optional) JSD-tabs
+    plot_jsd_cluster_heatmap,
+    plot_jsd_feature_ranking,
 )
 
 
@@ -162,6 +168,142 @@ def get_explorer_numeric_cols(
         nlp = NLP_FEATURES if has_nlp else []
         return raw_numeric + nlp
     raise ValueError(f"Unknown FEATURE_MODE: {mode}")
+
+
+# -------------------------------------------------------------------
+# JSD HELPERS
+# -------------------------------------------------------------------
+
+def _js_divergence(p: np.ndarray, q: np.ndarray) -> float:
+    """
+    Jensen–Shannon divergence between two discrete distributions p, q.
+    Both p and q should be non-negative and 1-D.
+    """
+    p = np.asarray(p, dtype=float)
+    q = np.asarray(q, dtype=float)
+
+    if p.sum() <= 0:
+        p = np.ones_like(p, dtype=float)
+    if q.sum() <= 0:
+        q = np.ones_like(q, dtype=float)
+
+    p = p / p.sum()
+    q = q / q.sum()
+    m = 0.5 * (p + q)
+
+    def _kl(a, b):
+        mask = (a > 0) & (b > 0)
+        if not np.any(mask):
+            return 0.0
+        return float(np.sum(a[mask] * np.log2(a[mask] / b[mask])))
+
+    return 0.5 * _kl(p, m) + 0.5 * _kl(q, m)
+
+
+def _compute_jsd_stats(
+    df: pd.DataFrame,
+    features: list[str],
+    cluster_col: str = "cluster",
+    method: str = "kmeans",
+    n_bins: int = 20,
+) -> dict:
+    """
+    Compute JSD-based separation metrics:
+
+    - For each feature:
+        * pairwise JSD matrix between cluster distributions
+        * mean JSD across cluster pairs (upper triangle)
+    - Returns a dict that can be stored in metrics.json
+
+    Uses:
+      - raw numeric features and NLP features (whatever is in `features`)
+      - excludes noise (-1) for HDBSCAN by default
+    """
+    if cluster_col not in df.columns:
+        return {}
+
+    work_df = df.copy()
+
+    # Exclude noise for HDBSCAN
+    if method == "hdbscan":
+        work_df = work_df[work_df[cluster_col] != -1]
+
+    unique_clusters = sorted(work_df[cluster_col].dropna().unique().tolist())
+    if len(unique_clusters) < 2:
+        # Not enough clusters to compute pairwise JSD
+        return {
+            "cluster_labels": unique_clusters,
+            "per_feature": {},
+            "feature_scores": {},
+            "ranked_features": [],
+        }
+
+    jsd_per_feature: dict[str, list[list[float]]] = {}
+    mean_jsd_scores: dict[str, float] = {}
+
+    for feat in features:
+        if feat not in work_df.columns:
+            continue
+
+        col = work_df[feat].dropna()
+        # Only numeric features make sense for histogram-based JSD
+        if col.empty or not pd.api.types.is_numeric_dtype(col):
+            continue
+
+        f_min, f_max = float(col.min()), float(col.max())
+        if f_min == f_max:
+            # No variability → distributions identical → JSD = 0
+            k = len(unique_clusters)
+            zero_mat = [[0.0 for _ in range(k)] for _ in range(k)]
+            jsd_per_feature[feat] = zero_mat
+            mean_jsd_scores[feat] = 0.0
+            continue
+
+        bins = np.linspace(f_min, f_max, n_bins + 1)
+
+        # Precompute histograms per cluster
+        dists: dict = {}
+        for c in unique_clusters:
+            vals_c = work_df.loc[work_df[cluster_col] == c, feat].dropna()
+            if vals_c.empty:
+                hist = np.ones(n_bins, dtype=float)
+            else:
+                hist, _ = np.histogram(vals_c.values, bins=bins)
+                hist = hist.astype(float)
+                if hist.sum() <= 0:
+                    hist = np.ones_like(hist, dtype=float)
+            dists[c] = hist
+
+        k = len(unique_clusters)
+        jsd_mat = np.zeros((k, k), dtype=float)
+
+        for i, ci in enumerate(unique_clusters):
+            for j, cj in enumerate(unique_clusters):
+                if j <= i:
+                    continue
+                jsd_val = _js_divergence(dists[ci], dists[cj])
+                jsd_mat[i, j] = jsd_val
+                jsd_mat[j, i] = jsd_val
+
+        jsd_per_feature[feat] = jsd_mat.tolist()
+
+        # Feature-level score: average JSD over all unique pairs
+        if k > 1:
+            iu = np.triu_indices(k, k=1)
+            vals = jsd_mat[iu]
+            mean_jsd_scores[feat] = float(vals.mean()) if vals.size > 0 else 0.0
+        else:
+            mean_jsd_scores[feat] = 0.0
+
+    ranked = sorted(mean_jsd_scores.items(), key=lambda x: x[1], reverse=True)
+    ranked_features = [f for f, _ in ranked]
+
+    return {
+        "cluster_labels": [int(c) if isinstance(c, (int, np.integer)) else c for c in unique_clusters],
+        "per_feature": jsd_per_feature,
+        "feature_scores": mean_jsd_scores,
+        "ranked_features": ranked_features,
+    }
 
 
 # -------------------------------------------------------------------
@@ -513,6 +655,15 @@ class GeneralClusterAnalyzer:
             )
         print("      Interactive KMeans cluster explorers saved.")
 
+        # === JSD metrics ===
+        print("   → Computing JSD-based cluster separation scores (KMeans)...")
+        jsd_stats = _compute_jsd_stats(
+            df=df,
+            features=explorer_numeric_cols,
+            cluster_col="cluster",
+            method="kmeans",
+        )
+
         # === Metrics summary ===
         metrics = {
             "data_version": DATA_VERSION,
@@ -537,6 +688,7 @@ class GeneralClusterAnalyzer:
                 "random_state": 42,
             },
             "cluster_counts": cluster_counts.to_dict(),
+            "jsd_stats": jsd_stats,
         }
         with open(save_dir / "metrics.json", "w") as f:
             json.dump(metrics, f, indent=2)
@@ -767,6 +919,15 @@ class GeneralClusterAnalyzer:
         df_final.to_csv(save_dir / "processed_with_clusters.csv", index=False)
         print(f"      Saved full processed dataset → {save_dir / 'processed_with_clusters.csv'}")
 
+        # === JSD metrics ===
+        print("   → Computing JSD-based cluster separation scores (GMM)...")
+        jsd_stats = _compute_jsd_stats(
+            df=df,
+            features=explorer_numeric_cols,
+            cluster_col="cluster",
+            method="gmm",
+        )
+
         # metrics
         metrics = {
             "data_version": DATA_VERSION,
@@ -790,6 +951,7 @@ class GeneralClusterAnalyzer:
                 "n_init": 5,
             },
             "cluster_counts": cluster_counts.to_dict(),
+            "jsd_stats": jsd_stats,
         }
         with open(save_dir / "metrics.json", "w") as f:
             json.dump(metrics, f, indent=2)
@@ -889,6 +1051,12 @@ class GeneralClusterAnalyzer:
                 },
                 "hdbscan_params": None,
                 "cluster_counts": cluster_counts.to_dict(),
+                "jsd_stats": _compute_jsd_stats(
+                    df=df,
+                    features=explorer_numeric_cols,
+                    cluster_col="cluster",
+                    method="hdbscan",
+                ),
             }
             with open(save_dir / "metrics.json", "w") as f:
                 json.dump(metrics, f, indent=2)
@@ -944,7 +1112,7 @@ class GeneralClusterAnalyzer:
         plt.savefig(proj_dir / "hdbscan_cluster_distribution.pdf", dpi=300)
         plt.close()
 
-        # === t-SNE projections (2D or 3D) ===
+        # === t-SNE projections (2D) ===
         plot_tsne_projection(
             X_tsne,
             df,
@@ -961,13 +1129,31 @@ class GeneralClusterAnalyzer:
                 title="TD/ASD Participants (t-SNE Projection)",
             )
 
+        # === Static 3D t-SNE projections (if ≥3 dims) ===
+        if X_tsne.shape[1] >= 3:
+            plot_tsne_projection_3d(
+                X_tsne,
+                df,
+                "cluster",
+                proj_dir / "tsne_hdbscan_clusters_3d.png",
+                title="HDBSCAN Clusters (3D t-SNE Projection)",
+            )
+            if target_col in df.columns:
+                plot_tsne_projection_3d(
+                    X_tsne,
+                    df,
+                    target_col,
+                    proj_dir / "tsne_target_projection_3d.png",
+                    title="TD/ASD Participants (3D t-SNE Projection)",
+                )
+
         plot_hdbscan_probability(
             X_tsne,
             clusterer,
             proj_dir / "hdbscan_probability_map.png",
         )
 
-        # interactive (Streamlit, 2D)
+        # === interactive (Streamlit, 2D) ===
         plot_tsne_projection_streamlit(
             X_tsne,
             df,
@@ -981,6 +1167,22 @@ class GeneralClusterAnalyzer:
                 color_col=target_col,
                 save_path=proj_dir / "tsne_target_projection.html",
             )
+
+        # === interactive (Streamlit, 3D) if we have 3 dims ===
+        if X_tsne.shape[1] >= 3:
+            plot_tsne_projection_streamlit_3d(
+                X_tsne,
+                df,
+                color_col="cluster",
+                save_path=proj_dir / "tsne_hdbscan_clusters_3d.html",
+            )
+            if target_col in df.columns:
+                plot_tsne_projection_streamlit_3d(
+                    X_tsne,
+                    df,
+                    color_col=target_col,
+                    save_path=proj_dir / "tsne_target_projection_3d.html",
+                )
 
         # === feature-level summaries (original feature space) ===
         plot_cluster_feature_means(
@@ -1028,6 +1230,15 @@ class GeneralClusterAnalyzer:
             )
         print("      Interactive t-SNE cluster explorers saved.")
 
+        # === JSD metrics ===
+        print("   → Computing JSD-based cluster separation scores (HDBSCAN)...")
+        jsd_stats = _compute_jsd_stats(
+            df=df,
+            features=explorer_numeric_cols,
+            cluster_col="cluster",
+            method="hdbscan",
+        )
+
         # === metrics (with PCA + t-SNE info) ===
         metrics = {
             "data_version": DATA_VERSION,
@@ -1056,6 +1267,7 @@ class GeneralClusterAnalyzer:
                 "min_samples": 5,
             },
             "cluster_counts": cluster_counts.to_dict(),
+            "jsd_stats": jsd_stats,
         }
         with open(save_dir / "metrics.json", "w") as f:
             json.dump(metrics, f, indent=2)
