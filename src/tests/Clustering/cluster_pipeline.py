@@ -1,32 +1,3 @@
-
-"""
-FINAL ASD CONSENSUS CLUSTERING PIPELINE
---------------------------------------
-
-What this script does:
-
-1) Load full dataset
-2) Filter ASD-only for unsupervised clustering
-3) Scale ASD features
-4) Embed ASD with PCA (optional UMAP)
-5) Cluster ASD with HDBSCAN (single run)
-6) Per-cluster bootstrap stability
-7) Bootstrap co-association matrix
-8) Consensus delta curve (k=2...Kmax) and best-k selection
-9) Consensus clustering on (1 - coassoc)
-10) Dendrogram-ordered consensus heatmap
-11) UMAP2D visualization of consensus clusters
-12) Cluster profiles and significance tests
-13) Train classifier on ASD consensus clusters
-14) Project TD into ASD consensus space
-15) TD contamination + ASD/TD ratios
-16) Save labeled ASD + TD outputs
-
-Requirements:
-    numpy, pandas, matplotlib, seaborn, sklearn>=1.4, scipy, umap-learn, hdbscan, tqdm, scikit-posthocs
-
-"""
-
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -34,22 +5,22 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from tqdm import tqdm
 import os
+import warnings
 
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
-from sklearn.cluster import AgglomerativeClustering
+from sklearn.cluster import KMeans, AgglomerativeClustering
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import silhouette_score
+
+from consensusclustering import ConsensusClustering
 
 from scipy.cluster.hierarchy import linkage, leaves_list, dendrogram
 from scipy.stats import f_oneway, kruskal
 import scikit_posthocs as sp
 
-import hdbscan
 from umap.umap_ import UMAP
-
-import warnings
-warnings.filterwarnings("ignore")
+from kneed import KneeLocator
 
 import nltk
 from textblob import TextBlob
@@ -57,6 +28,8 @@ import textstat
 from nltk.tokenize import word_tokenize, sent_tokenize
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
+
+warnings.filterwarnings("ignore")
 
 # -------------------------------------------------------------------
 # NLTK setup
@@ -76,7 +49,7 @@ _nltk_setup()
 
 
 # ================================================================
-# 0. NLP feature extractor - From data_preprocessor
+# 0. NLP feature extractor
 # ================================================================
 class NLPFeatureExtractor:
     def __init__(self):
@@ -129,6 +102,7 @@ class NLPFeatureExtractor:
             feats["avg_word_length"] = np.mean([len(w) for w in words]) if words else 0
             feats["avg_sentence_length"] = (len(words) / len(sentences)) if sentences else 0
 
+            # FSR-style shortness proxy
             feats["shortness_score"] = 1 / (1 + feats["word_count"])
 
             unique_words = set(words)
@@ -160,10 +134,9 @@ class NLPFeatureExtractor:
 # ================================================================
 # 1. EMBEDDING
 # ================================================================
-
 def embed_data(
     X_scaled,
-    method="pca_umap",     # "pca" or "pca_umap"
+    method="pca",     # "pca" or "pca_umap"
     pca_var=0.95,
     umap_n_neighbors=20,
     umap_min_dist=0.1,
@@ -171,7 +144,7 @@ def embed_data(
     random_state=42
 ):
     """
-    Fits PCA based on threshold supplied (default is 0.95) then UMAP (Optional).
+    Fits PCA based on threshold supplied (default is 0.95) then UMAP (optional).
 
     Returns:
         X_embed, pca_model, umap_model (or None)
@@ -206,286 +179,241 @@ def fit_umap_2d(X_scaled, random_state=42):
 
 
 # ================================================================
-# 2. HDBSCAN CLUSTERING
+# 4. Consensus Matrix, PAC, ΔAUC
 # ================================================================
-
-def cluster_hdbscan(X_embed, min_cluster_size=10, min_samples=5):
-    clusterer = hdbscan.HDBSCAN(
-        min_cluster_size=min_cluster_size,
-        min_samples=min_samples
-    )
-    labels = clusterer.fit_predict(X_embed)
-    return labels, clusterer
-
-
-# ================================================================
-# 3. PER-CLUSTER STABILITY
-# ================================================================
-
-def cluster_stability(
-    X_scaled,
-    labels_orig,
-    embed_method="pca_umap",
-    B=100,
-    pca_var=0.95,
-    umap_n_neighbors=20,
-    umap_min_dist=0.1,
-    umap_n_components=10,
-    min_cluster_size=10,
-    min_samples=5,
-    random_state=42
-):
+def compute_pac(consensus_matrix, lower=0.1, upper=0.9):
     """
-    Stability(cluster c) =
-      avg over bootstraps of:
-        (# original members of c appearing in bootstrap
-         that land in same majority boot cluster)
-         : divided by :
-        (# original members of c appearing in bootstrap)
+    PAC score = CDF(upper) - CDF(lower). Lower PAC = better clustering.
     """
-    orig_clusters = [c for c in sorted(set(labels_orig)) if c != -1]
-    orig_members = {c: np.where(labels_orig == c)[0] for c in orig_clusters}
+    flat = consensus_matrix[np.triu_indices_from(consensus_matrix, k=1)]
+    hist, _ = np.histogram(flat, bins=100, range=(0, 1), density=True)
+    cdf = np.cumsum(hist) / np.sum(hist)
 
-    n = len(labels_orig)
-    rng = np.random.default_rng(random_state)
+    idx_lower = max(int(lower * 100) - 1, 0)
+    idx_upper = max(int(upper * 100) - 1, 0)
 
-    stab_scores = {c: [] for c in orig_clusters}
-
-    for b in tqdm(range(B), desc="Cluster Stability bootstraps"):
-        boot_idx = rng.choice(n, size=n, replace=True)
-        Xb = X_scaled[boot_idx]
-
-        Xb_embed, _, _ = embed_data(
-            Xb,
-            method=embed_method,
-            pca_var=pca_var,
-            umap_n_neighbors=umap_n_neighbors,
-            umap_min_dist=umap_min_dist,
-            umap_n_components=umap_n_components,
-            random_state=random_state + b + 11
-        )
-
-        labels_b, _ = cluster_hdbscan(
-            Xb_embed,
-            min_cluster_size=min_cluster_size,
-            min_samples=min_samples
-        )
-
-        # first occurrence of orig index in bootstrap
-        first_occ = {}
-        for pos, oi in enumerate(boot_idx):
-            if oi not in first_occ:
-                first_occ[oi] = pos
-
-        for c in orig_clusters:
-            members = orig_members[c]
-            appearing = [i for i in members if i in first_occ]
-
-            if len(appearing) == 0:
-                continue
-
-            boot_labels = [labels_b[first_occ[i]] for i in appearing]
-            non_noise = [bl for bl in boot_labels if bl != -1]
-
-            if len(non_noise) == 0:
-                stab_scores[c].append(0.0)
-                continue
-
-            vals, counts = np.unique(non_noise, return_counts=True)
-            majority = vals[np.argmax(counts)]
-
-            stab = np.mean([bl == majority for bl in boot_labels if bl != -1])
-            stab_scores[c].append(stab)
-
-    stab_final = {
-        c: np.mean(stab_scores[c]) if len(stab_scores[c]) > 0 else np.nan
-        for c in orig_clusters
-    }
-    return stab_final, stab_scores
+    return cdf[idx_upper] - cdf[idx_lower]
 
 
-# ================================================================
-# 4. CO-ASSOCIATION MATRIX (BOOTSTRAP CONSENSUS)
-# ================================================================
-
-def coassociation_matrix(
-    X_scaled,
-    embed_method="pca_umap",
-    B=100,
-    pca_var=0.95,
-    umap_n_neighbors=20,
-    umap_min_dist=0.1,
-    umap_n_components=10,
-    min_cluster_size=10,
-    min_samples=5,
-    random_state=42
-):
-    n = X_scaled.shape[0]
-    rng = np.random.default_rng(random_state)
-
-    coassoc = np.zeros((n, n), float)
-    denom   = np.zeros((n, n), float)
-
-    for b in tqdm(range(B), desc="Co-association bootstraps"):
-        boot_idx = rng.choice(n, size=n, replace=True)
-        Xb = X_scaled[boot_idx]
-
-        Xb_embed, _, _ = embed_data(
-            Xb,
-            method=embed_method,
-            pca_var=pca_var,
-            umap_n_neighbors=umap_n_neighbors,
-            umap_min_dist=umap_min_dist,
-            umap_n_components=umap_n_components,
-            random_state=random_state + b + 101
-        )
-
-        labels_b, _ = cluster_hdbscan(
-            Xb_embed,
-            min_cluster_size=min_cluster_size,
-            min_samples=min_samples
-        )
-
-        first_pos = {}
-        for pos, oi in enumerate(boot_idx):
-            if oi not in first_pos:
-                first_pos[oi] = pos
-
-        # Count appearances
-        for i, pi in first_pos.items():
-            li = labels_b[pi]
-            if li == -1:
-                continue
-            for j, pj in first_pos.items():
-                lj = labels_b[pj]
-                if lj == -1:
-                    continue
-                denom[i, j] += 1
-                if li == lj:
-                    coassoc[i, j] += 1
-
-    # Normalize
-    coassoc_norm = np.zeros_like(coassoc)
-    valid = denom > 0
-    coassoc_norm[valid] = coassoc[valid] / denom[valid]
-    np.fill_diagonal(coassoc_norm, 1.0)
-
-    return coassoc_norm
-
-
-
-
-# ================================================================
-# 5. CONSENSUS DELTA CURVE 
-# ================================================================
-
-def cdf_area(coassoc, bins=100):
+def compute_delta_auc(cdf_area_dict):
     """
-    Compute empirical CDF and area under CDF.
-    Returns:
-        area,
-        cdf array,
-        bin_edges
+    Monti-style proportional ΔAUC between successive Ks.
     """
-    # Extract upper triangle values
-    flat = coassoc[np.triu_indices_from(coassoc, k=1)]
+    ks = sorted(cdf_area_dict.keys())
+    aucs = np.array([cdf_area_dict[k] for k in ks])
 
-    # Histogram *frequencies* (NOT density)
-    hist, bin_edges = np.histogram(flat, bins=bins, range=(0, 1), density=False)
-
-    # Normalize to probabilities
-    freq = hist / hist.sum()
-
-    # Empirical CDF
-    cdf = np.cumsum(freq)
-
-    # Area under CDF
-    dt = 1.0 / bins
-    area = np.sum(cdf * dt)
-
-    return area, cdf, bin_edges
-
-
-def consensus_delta_curve(coassoc, K_range, linkage_method="average"):
-    """
-    Compute delta area curve for k in K_range.
-    Returns:
-        areas[k], deltas[k], cdfs[k]
-    """
-    D = 1 - coassoc
-    areas = {}
-    cdfs = {}
-    deltas = {}
-
-    prev_area = None
-
-    for k in K_range:
-        # 1. Consensus clustering for this k
-        labels = AgglomerativeClustering(
-            n_clusters=k,
-            metric="precomputed",
-            linkage=linkage_method
-        ).fit_predict(D)
-
-        # 2. Within-cluster consensus values
-        mask = labels[:, None] == labels[None, :]
-        cluster_only = coassoc * mask
-
-        # 3. Compute CDF area
-        area, cdf, _ = cdf_area(cluster_only)
-
-        areas[k] = area
-        cdfs[k] = cdf
-
-        # 4. Delta = A(k) − A(k−1)
-        if prev_area is None:
-            deltas[k] = 0.0
+    delta = np.zeros_like(aucs)
+    for i in range(1, len(ks)):
+        # proportional improvement
+        if aucs[i] != 0:
+            delta[i] = (aucs[i] - aucs[i - 1]) / aucs[i]
         else:
-            deltas[k] = area - prev_area
+            delta[i] = 0.0
 
-        prev_area = area
+    delta_dict = {k: d for k, d in zip(ks, delta)}
+    return delta_dict
 
-    return areas, deltas, cdfs
 
-
-def pick_best_k(areas, deltas, method="max_delta"):
+def consensus_clustering(X, minK=2, maxK=12, reps=500, pItem=0.8):
     """
-    Select the best k from the delta curve.
-    method:
-        - "max_delta": choose k with largest increase
-        - "elbow": choose elbow (second derivative)
+    Run consensus clustering using the `consensusclustering` Python package
+    on an embedded matrix X (e.g., PCA or PCA+UMAP space).
     """
-    if method == "max_delta":
-        kd = list(deltas.keys())[1:]
-        dv = [deltas[c] for c in kd]
-        return kd[int(np.argmax(dv))]
+    X = np.asarray(X)
 
-    else:
-        raise NotImplementedError("elbow method can be added later")
+    base = KMeans(n_init="auto", random_state=RANDOM_STATE)
 
-from kneed import KneeLocator
+    cc = ConsensusClustering(
+        clustering_obj=base,
+        min_clusters=minK,
+        max_clusters=maxK,
+        n_resamples=reps,
+        resample_frac=pItem,
+        k_param="n_clusters",
+        rng=RANDOM_STATE
+    )
 
-def elbow_kneedle(deltas):
-    ks = np.array(sorted(deltas.keys()))
-    dv = np.array([deltas[c] for c in ks])
+    cc.fit(X, progress_bar=True, n_jobs=-1)
+
+    Ks = cc.cluster_range_
+    consensus_mats = {}
+    pac_scores = {}
+    avg_consensus_scores = {}
+    cdf_area_scores = {}
+
+    # Store consensus data
+    for k in Ks:
+        M = cc.consensus_k(k)
+        consensus_mats[k] = M
+        pac_scores[k] = compute_pac(M)
+        avg_consensus_scores[k] = np.mean(M)
+        cdf_area_scores[k] = cc.area_under_cdf(k)
+        cc.plot_clustermap(k)
+
+    # ---- Plots ----
+    print("\nPlotting CDF curves...")
+    cc.plot_cdf()
+    plt.title("Consensus CDF Curves")
+    plt.show()
+
+    print("Plotting AUC (change in area) curve...")
+    cc.plot_change_area_under_cdf()
+    plt.title("Delta AUC Curve")
+    plt.show()
+
+    print("Plotting AUC(CDF) vs K with knee...")
+    cc.plot_auc_cdf(include_knee=True)
+    plt.title("AUC(CDF) vs K")
+    plt.show()
+
+    return {
+        "cc": cc,
+        "consensus_mats": consensus_mats,
+        "pac": pac_scores,
+        "avg_consensus": avg_consensus_scores,
+        "cdf_area": cdf_area_scores,
+        "K_range": Ks
+    }
+
+
+# ================================================================
+# 5. BEST K Selection Methods
+# ================================================================
+def best_k_pac(pac_dict):
+    """Choose k with minimal PAC."""
+    return min(pac_dict, key=pac_dict.get)
+
+
+def best_k_stability(stability_dict):
+    """Choose k with maximum mean-consensus."""
+    return max(stability_dict, key=stability_dict.get)
+
+
+def kneedle_best_k_pac(pac_dict):
+    """
+    PAC(k): usually decreasing and roughly concave.
+    Use concave + decreasing.
+    """
+    ks = np.array(sorted(pac_dict.keys()))
+    vals = np.array([pac_dict[k] for k in ks])
 
     kneedle = KneeLocator(
-        ks, dv,
-        curve='concave',
-        direction='decreasing'
+        ks, vals,
+        curve="concave",
+        direction="decreasing"
     )
     return kneedle.knee
 
 
-# ================================================================
-# 6. CONSENSUS CLUSTERING + DENDROGRAM ORDER
-# ================================================================
+def kneedle_best_k_cdf_area(cdf_area_dict):
+    """
+    AUC(CDF)(k): increasing and concave (saturating).
+    Use concave + increasing.
+    """
+    ks = np.array(sorted(cdf_area_dict.keys()))
+    vals = np.array([cdf_area_dict[k] for k in ks])
 
-def consensus_clustering(coassoc, k,):
+    kneedle = KneeLocator(
+        ks, vals,
+        curve="concave",
+        direction="increasing"
+    )
+    return kneedle.knee
+
+
+def kneedle_best_k_delta_auc(delta_auc_dict):
     """
-    Final consensus clustering.
+    ΔAUC(k): typically decreasing, convex (big improvements at small k, then flatten).
+    Use convex + decreasing.
     """
-    D = 1 - coassoc
+    ks = np.array(sorted(delta_auc_dict.keys()))
+    vals = np.array([delta_auc_dict[k] for k in ks])
+
+    kneedle = KneeLocator(
+        ks, vals,
+        curve="convex",
+        direction="decreasing"
+    )
+    return kneedle.knee
+
+
+def kneedle_best_k_stability(stability_dict):
+    """
+    Stability(k) = mean consensus: increasing concave (saturating).
+    Use concave + increasing.
+    """
+    ks = np.array(sorted(stability_dict.keys()))
+    vals = np.array([stability_dict[k] for k in ks])
+
+    kneedle = KneeLocator(
+        ks, vals,
+        curve="concave",
+        direction="increasing"
+    )
+    return kneedle.knee
+
+
+def choose_best_k(results):
+    """
+    Aggregate all best-K criteria:
+      - PAC minimum
+      - PAC Kneedle elbow
+      - Stability maximum
+      - Stability Kneedle elbow
+      - AUC(CDF) Kneedle elbow
+      - ΔAUC Kneedle elbow
+    """
+    pac = results["pac"]
+    stab = results["avg_consensus"]
+    auc_area = results["cdf_area"]
+
+    delta_auc = compute_delta_auc(auc_area)
+
+    k1 = best_k_pac(pac)
+    k2 = kneedle_best_k_pac(pac)
+    k3 = best_k_stability(stab)
+    k4 = kneedle_best_k_stability(stab)
+    k5 = kneedle_best_k_cdf_area(auc_area)
+    k6 = kneedle_best_k_delta_auc(delta_auc)
+
+    print("\n============== BEST-K SUMMARY ===============")
+    print(f"1. PAC minimum                 k = {k1}")
+    print(f"2. PAC Kneedle elbow           k = {k2}")
+    print(f"3. Stability maximum           k = {k3}")
+    print(f"4. Stability Kneedle elbow     k = {k4}")
+    print(f"5. AUC(CDF) Kneedle elbow      k = {k5}")
+    print(f"6. ΔAUC Kneedle elbow          k = {k6}")
+
+    # Choose the smallest reasonable K among elbow-based methods
+    candidates = [k for k in [k2, k4, k5, k6] if k is not None]
+
+    if len(candidates):
+        final = min(candidates)
+    else:
+        final = k1  # fallback to PAC minimum
+
+    print(f"\n>>> FINAL recommended k: {final}")
+    print("=============================================\n")
+
+    return {
+        "pac_min": k1,
+        "pac_kneedle": k2,
+        "stab_max": k3,
+        "stab_kneedle": k4,
+        "auc_kneedle": k5,
+        "delta_auc_kneedle": k6,
+        "final": final
+    }
+
+
+# ================================================================
+# 6. CONSENSUS CLUSTERING + FINAL LABELS
+# ================================================================
+def consensus_clusterer(consensus, k):
+    """
+    Final consensus clustering on distance D = 1 - consensus.
+    """
+    D = 1 - consensus
     labels = AgglomerativeClustering(
         n_clusters=k,
         metric="precomputed",
@@ -494,47 +422,9 @@ def consensus_clustering(coassoc, k,):
     return labels
 
 
-def dendrogram_order(coassoc, linkage_method="average"):
-    """
-    Compute leaf order of the dendrogram for heatmap sorting.
-    """
-    D = 1 - coassoc
-    tri = D[np.triu_indices_from(D, k=1)]
-    Z = linkage(tri, method=linkage_method)
-    order = leaves_list(Z)
-    return order, Z
-
-
 # ================================================================
-# 7. PLOTTING
+# 7. PLOTTING HELPERS
 # ================================================================
-
-def plot_heatmap(mat, title, vmin=0, vmax=1):
-    plt.figure(figsize=(7, 6))
-    sns.heatmap(mat, cmap="Reds", vmin=vmin, vmax=vmax)
-    plt.title(title)
-    plt.tight_layout()
-    plt.show()
-
-
-def plot_delta_curve(K_range, deltas):
-    plt.figure(figsize=(7, 4))
-    plt.plot(list(K_range), deltas, marker="o")
-    plt.xlabel("k")
-    plt.ylabel("Delta-CDF")
-    plt.title("Consensus Delta Curve (choose elbow / max jump [chosen])")
-    plt.tight_layout()
-    plt.show()
-
-
-def plot_dendrogram(Z):
-    plt.figure(figsize=(10, 4))
-    dendrogram(Z, no_labels=True)
-    plt.title("Consensus Dendrogram")
-    plt.tight_layout()
-    plt.show()
-
-
 def plot_umap_clusters(points_2d, labels, title):
     plt.figure(figsize=(9, 7))
     labels = np.asarray(labels)
@@ -544,7 +434,8 @@ def plot_umap_clusters(points_2d, labels, title):
     for i, lab in enumerate(uniq):
         m = labels == lab
         plt.scatter(points_2d[m, 0], points_2d[m, 1],
-                    s=18, alpha=0.85, label=f"cluster {lab}", c=[cmap(i % 10)])
+                    s=18, alpha=0.85, label=f"cluster {lab}",
+                    c=[cmap(i % 10)])
 
     plt.title(title)
     plt.xlabel("UMAP-1")
@@ -553,92 +444,6 @@ def plot_umap_clusters(points_2d, labels, title):
     plt.tight_layout()
     plt.show()
 
-
-def plot_consensus_with_labels(coassoc, labels, title="", cmap="Reds"):
-    """
-    coassoc: NxN consensus matrix
-    labels: cluster labels (length N)
-    """
-
-    # 1. Sort by cluster assignments
-    order = np.argsort(labels)
-    sorted_mat = coassoc[np.ix_(order, order)]
-    sorted_labels = labels[order]
-
-    # 2. Create a color palette for clusters
-    uniq = np.unique(sorted_labels)
-    palette = sns.color_palette("tab20", len(uniq))
-    label_colors = {u: palette[i] for i, u in enumerate(uniq)}
-
-    # 3. Convert labels → list of colors in order
-    row_colors = [label_colors[l] for l in sorted_labels]
-
-    # 4. Plot heatmap with label bars
-    fig = plt.figure(figsize=(10, 9))
-    gs = fig.add_gridspec(2, 2, width_ratios=[0.2, 1], height_ratios=[0.2, 1],
-                          wspace=0.05, hspace=0.05)
-
-    # # Top color bar (cluster labels)
-    # ax_top = fig.add_subplot(gs[0, 1])
-    # ax_top.imshow([row_colors], aspect='auto')
-    # ax_top.axis("off")
-
-    # # Left color bar (cluster labels)
-    # ax_left = fig.add_subplot(gs[1, 0])
-    # ax_left.imshow(np.array([row_colors]).T, aspect='auto')
-    # ax_left.axis("off")
-
-    # Main heatmap
-    ax = fig.add_subplot(gs[1, 1])
-    sns.heatmap(sorted_mat, cmap=cmap, vmin=0, vmax=1, ax=ax,
-                cbar_kws={"label": "Consensus"})
-    ax.set_title(title)
-
-    plt.show()
-
-def plot_pca_variance(pca_full):
-    """
-    Plots the Cumulative Explained Variance
-    """
-    evr = pca_full.explained_variance_ratio_
-    cum = np.cumsum(evr)
-    ks = np.arange(1, len(evr) + 1)
-
-    plt.figure(figsize=(10, 6))
-    plt.bar(ks, evr, alpha=0.6, label="Individual Explained Variance")
-    plt.plot(ks, cum, marker='o', color='red', label="Cumulative Explained Variance")
-
-    plt.axhline(0.95, color='green', linestyle='--', label="95% Threshold")
-    plt.xlabel("Principal Component")
-    plt.ylabel("Explained Variance Ratio")
-    plt.title("PCA Scree Plot (Variance Explained)")
-    plt.legend()
-    plt.tight_layout()
-    plt.show()
-
-# def plot_pca_loadings(pca_model, feature_names, top_n=10):
-#     """
-#     Plots loadings (weights) of top PCs for interpretability.
-#     """
-#     loadings = pca_model.components_  # shape: (n_components, n_features)
-#     n_pcs = loadings.shape[0]
-#
-#     for pc in range(min(n_pcs, 10)):
-#         comp = loadings[pc]
-#         abs_idx = np.argsort(np.abs(comp))[::-1][:top_n]
-#
-#         plt.figure(figsize=(10, 4))
-#         plt.bar(
-#             np.array(feature_names)[abs_idx],
-#             comp[abs_idx],
-#             color="royalblue"
-#         )
-#
-#         plt.axhline(0, color='black')
-#         plt.xticks(rotation=45, ha="right")
-#         plt.title(f"PCA Loadings: PC{pc+1} (Top {top_n} features)")
-#         plt.tight_layout()
-#         plt.show()
 
 def plot_pca_loadings(pca_model, feature_names, top_n=10):
     """
@@ -651,15 +456,13 @@ def plot_pca_loadings(pca_model, feature_names, top_n=10):
     for pc in range(min(n_pcs, 5)):  # show first 5 PCs
         comp = loadings[pc]
 
-        # strongest absolute loadings
         abs_idx = np.argsort(np.abs(comp))[::-1][:top_n]
         sel_features = np.array(feature_names)[abs_idx]
         sel_values = comp[abs_idx]
 
         plt.figure(figsize=(12, 4))
-        bars = plt.bar(sel_features, sel_values, color="royalblue")
+        bars = plt.bar(sel_features, sel_values)
 
-        # ---- ADD VALUE LABELS ON TOP OF BARS ----
         for bar, value in zip(bars, sel_values):
             height = bar.get_height()
             plt.text(
@@ -679,38 +482,54 @@ def plot_pca_loadings(pca_model, feature_names, top_n=10):
         plt.show()
 
 
+def plot_pac_curve(pac_dict):
+    ks = sorted(pac_dict.keys())
+    vals = [pac_dict[k] for k in ks]
+    plt.figure(figsize=(7, 4))
+    plt.plot(ks, vals, marker="o")
+    plt.xlabel("k")
+    plt.ylabel("PAC")
+    plt.title("PAC(k) — lower is better")
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_stability_curve(stability_dict):
+    ks = sorted(stability_dict.keys())
+    vals = [stability_dict[k] for k in ks]
+    plt.figure(figsize=(7, 4))
+    plt.plot(ks, vals, marker="o")
+    plt.xlabel("k")
+    plt.ylabel("Cluster Stability (mean consensus)")
+    plt.title("Mean Stability vs k — higher is better")
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+
+
 # ================================================================
 # 8. CLUSTER PROFILES + SIGNIFICANCE
 # ================================================================
-
-def cluster_profiles2(df_asd, features, label_col="consensus_cluster"):
-    return (df_asd.groupby(label_col)[features]
-            .agg(["count", "mean", "std", "median"])
-            .sort_index())
-
 def cluster_profiles(df_asd, features, label_col="consensus_cluster",
                      outdir="cluster_profiles"):
     """
-    Creates per feature stats :  count, mean, std, median - for each consensus cluster.
+    Creates per feature stats : mean, median and std - for each consensus cluster.
     """
     os.makedirs(outdir, exist_ok=True)
 
     results = {}
 
     for feat in features:
-
         df_feat = (
             df_asd.groupby(label_col)[feat]
                   .agg(["count", "mean", "std", "median"])
                   .sort_index()
         )
-
         results[feat] = df_feat
-
 
         fig, ax = plt.subplots(figsize=(10, 0.8 + 0.4 * len(df_feat)))
         ax.axis("off")
-
 
         plt.text(
             0.5, 1.01,
@@ -719,7 +538,6 @@ def cluster_profiles(df_asd, features, label_col="consensus_cluster",
             fontsize=14, fontweight="bold",
             transform=ax.transAxes
         )
-
 
         table = ax.table(
             cellText=df_feat.round(3).values,
@@ -732,7 +550,6 @@ def cluster_profiles(df_asd, features, label_col="consensus_cluster",
         table.set_fontsize(9)
         table.scale(1, 1.3)
 
-
         fname = os.path.join(outdir, f"profile_{feat}.pdf")
         plt.savefig(fname, bbox_inches="tight")
         plt.close()
@@ -742,47 +559,13 @@ def cluster_profiles(df_asd, features, label_col="consensus_cluster",
     return results
 
 
-
-def significance_tests2(df_asd, features, label_col="consensus_cluster"):
-    print("\n=== Significance tests across consensus clusters ===")
-    clusters = sorted(df_asd[label_col].unique())
-
-    for f in features:
-        groups = [df_asd[df_asd[label_col] == c][f].values for c in clusters]
-
-        try:
-            print("\n=== One Way F Test ===")
-            F, p_a = f_oneway(*groups)
-        except Exception:
-            F, p_a = np.nan, np.nan
-
-        try:
-            print("\n===  Kruskal Test ===")
-            H, p_k = kruskal(*groups)
-        except Exception:
-            H, p_k = np.nan, np.nan
-
-        print(f"\nFeature: {f}")
-        print(f"  ANOVA:   F={F:.3f}, p={p_a:.3g}")
-        print(f"  Kruskal: H={H:.3f}, p={p_k:.3g}")
-
-    print("\n=== Dunn posthoc Test for Pairwise Clusters ===")
-    for f in features:
-        dunn = sp.posthoc_dunn(
-            df_asd, val_col=f, group_col=label_col, p_adjust="bonferroni"
-        )
-        print(f"\nDunn p-values for {f}:")
-        print(dunn)
-
 def significance_tests(df_asd, features, label_col="consensus_cluster",
-                         _dir="significance_tests"):
+                       _dir="significance_tests"):
     """
-    significance tests
-      • ANOVA + Kruskal results
-      • Dunn matrices
+    Significance tests:
+       • ANOVA + Kruskal
+       • Dunn post-hoc
     """
-
-
     os.makedirs(_dir, exist_ok=True)
 
     print("\n=== Significance tests across consensus clusters ===")
@@ -790,25 +573,21 @@ def significance_tests(df_asd, features, label_col="consensus_cluster",
 
     summary_rows = []
 
-    # ===============================================================
-    # ANOVA + KRUSKAL
-    # ===============================================================
+    # ANOVA + Kruskal
     for f in features:
         groups = [df_asd[df_asd[label_col] == c][f].values for c in clusters]
 
         try:
-            print("\n=== One Way F Test ===")
             F, p_a = f_oneway(*groups)
         except Exception:
             F, p_a = np.nan, np.nan
 
         try:
-            print("\n===  Kruskal Test ===")
             H, p_k = kruskal(*groups)
         except Exception:
             H, p_k = np.nan, np.nan
 
-        print(f"\nFeature: {f}")
+        print(f"\n---Feature: {f}---")
         print(f"  ANOVA:   F={F:.3f}, p={p_a:.3g}")
         print(f"  Kruskal: H={H:.3f}, p={p_k:.3g}")
 
@@ -820,23 +599,22 @@ def significance_tests(df_asd, features, label_col="consensus_cluster",
             "kruskal_p": p_k
         })
 
-    summary_df = pd.DataFrame(summary_rows)
-    summary_df_rounded = summary_df.round(3)
+    summary_df = pd.DataFrame(summary_rows).round(3)
 
-    fig, ax = plt.subplots(figsize=(12, 0.7 + 0.3 * len(summary_df_rounded)))
+    fig, ax = plt.subplots(figsize=(12, 0.7 + 0.3 * len(summary_df)))
     ax.axis("off")
 
     plt.text(
         0.5, 1.01,
-        f"One Way ANOVA and KRUSKAL Test Results for Consensus clusters",
+        "One Way ANOVA and Kruskal Test Results for Consensus Clusters",
         ha="center", va="bottom",
         fontsize=14, fontweight="bold",
         transform=ax.transAxes
     )
 
     table = ax.table(
-        cellText=summary_df_rounded.values,
-        colLabels=summary_df_rounded.columns,
+        cellText=summary_df.values,
+        colLabels=summary_df.columns,
         loc="center"
     )
 
@@ -844,14 +622,12 @@ def significance_tests(df_asd, features, label_col="consensus_cluster",
     table.set_fontsize(9)
     table.scale(1, 1.3)
 
-    fname = os.path.join(_dir, f"significance.pdf")
+    fname = os.path.join(_dir, "significance.pdf")
     plt.savefig(fname, bbox_inches="tight")
     plt.close()
     print(f"\nSaved significance test summary : {fname}")
 
-    # ===============================================================
-    # DUNN Posthoc Tset
-    # ===============================================================
+    # Dunn post-hoc test
     print("\n=== Dunn posthoc Test for Pairwise Clusters ===")
 
     for f in features:
@@ -896,13 +672,13 @@ def significance_tests(df_asd, features, label_col="consensus_cluster",
 # ================================================================
 # 9. TD PROJECTION + CONTAMINATION
 # ================================================================
-
-def train_asd_consensus_classifier(X_asd_embed, consensus_labels):
+def train_asd_consensus_classifier(X_embed, consensus_labels):
     clf = RandomForestClassifier(
         n_estimators=400,
+        bootstrap=True,
         random_state=42
     )
-    clf.fit(X_asd_embed, consensus_labels)
+    clf.fit(X_embed, consensus_labels)
     return clf
 
 
@@ -927,7 +703,7 @@ def project_td_to_consensus(
     return df_td, X_td_embed
 
 
-def td_contamination(df_asd, df_td, label_col="consensus_cluster", pdf_filename="TD_Contamination"):
+def td_contamination(df_asd, df_td, label_col="consensus_cluster", pdf_filename="TD_Contamination.pdf"):
     asd_counts = df_asd[label_col].value_counts().sort_index()
     td_counts = df_td["consensus_cluster_pred"].value_counts().sort_index()
 
@@ -975,7 +751,6 @@ def td_contamination(df_asd, df_td, label_col="consensus_cluster", pdf_filename=
 # ================================================================
 # 10. MAIN
 # ================================================================
-
 if __name__ == "__main__":
 
     # ---------------- USER CONFIG ----------------
@@ -984,43 +759,38 @@ if __name__ == "__main__":
     TEXT_COLUMN = "free_response_TDprof_norm"
 
     FEATURES = [
-        "FSR",
-        "BIS",
-        "SRS.Raw",
-        "TDNorm_avg_PE",
-        "overall_avg_PE",
-        "TDnorm_concept_learning",
-        "overall_concept_learning",
-        # "shortness_score",
-        # "lexical_diversity",
-        # "sentiment_polarity",
-        # "sentiment_subjectivity",
-        # "flesch_reading_ease",
-        # "flesch_kincaid_grade",
+        'FSR',
+        'TDNorm_avg_PE',
+        'TDnorm_concept_learning',
+        'overall_concept_learning',
+        # 'word_count',
+        # 'avg_word_length',
+        # 'avg_sentence_length',
+        # 'shortness_score',
+        # 'sentiment_polarity',
+        # 'sentiment_subjectivity',
+        # 'negative_word_count',
+        # 'positive_word_ratio',
+        # 'negative_word_ratio',
+        # 'flesch_reading_ease'
     ]
-    COLS = ["sub","td_or_asd"] + FEATURES
-    EMBED_METHOD = "pca_umap"   # "pca" or "pca_umap"
-    B_BOOT = 100
-    K_RANGE = range(2, 30)
 
-    # HDBSCAN parameters
-    MIN_CLUSTER_SIZE = 10
-    MIN_SAMPLES = 5
+    COLS = ["sub", "td_or_asd"] + FEATURES
+    EMBED_METHOD = "pca"   # "pca" or "pca_umap"
 
-    # PCA / UMAP parameters
     PCA_VAR = 0.95
     UMAP_N_NEIGHBORS = 20
     UMAP_MIN_DIST = 0.1
     UMAP_N_COMPONENTS = 10
 
     RANDOM_STATE = 42
+
     # ---------------------------------------------
     df = pd.read_csv(data_path)
     print(f"Loaded raw data: {df.shape} from {data_path}")
 
-    # -------- Extract NLP features --------
+    # Extract NLP features
     nlp_extractor = NLPFeatureExtractor()
-
     print(f"Extracting NLP features from `{TEXT_COLUMN}`...")
     nlp_features = [nlp_extractor.extract_nlp_features(t) for t in df[TEXT_COLUMN]]
     nlp_df = pd.DataFrame(nlp_features)
@@ -1038,7 +808,7 @@ if __name__ == "__main__":
     X_asd = df_asd[FEATURES].values
     X_asd_scaled = scaler.fit_transform(X_asd)
 
-    # Embed ASD
+    # Embed ASD (PCA / PCA + UMAP)
     X_asd_embed, pca_model, umap_model = embed_data(
         X_asd_scaled,
         method=EMBED_METHOD,
@@ -1049,116 +819,61 @@ if __name__ == "__main__":
         random_state=RANDOM_STATE
     )
 
-    # plot_pca_variance(pca_full)
+    # PCA loadings
     plot_pca_loadings(pca_model, FEATURES, top_n=10)
 
-    # Single-run HDBSCAN
-    labels_hdb, _ = cluster_hdbscan(
+    # ============================================================
+    # FULL CONSENSUS CLUSTERING OVER K (Monti + Şenbabaoğlu)
+    # ============================================================
+    cc_dict = consensus_clustering(
         X_asd_embed,
-        min_cluster_size=MIN_CLUSTER_SIZE,
-        min_samples=MIN_SAMPLES
-    )
-    print("\nHDBSCAN raw clusters:", len((set(labels_hdb) - {-1})))
-
-    # # Stability on HDBSCAN clusters
-    # stab_final, _ = cluster_stability(
-    #     X_asd_scaled,
-    #     labels_hdb,
-    #     embed_method=EMBED_METHOD,
-    #     B=B_BOOT,
-    #     pca_var=PCA_VAR,
-    #     umap_n_neighbors=UMAP_N_NEIGHBORS,
-    #     umap_min_dist=UMAP_MIN_DIST,
-    #     umap_n_components=UMAP_N_COMPONENTS,
-    #     min_cluster_size=MIN_CLUSTER_SIZE,
-    #     min_samples=MIN_SAMPLES,
-    #     random_state=RANDOM_STATE
-    # )
-    # print("\nPer-cluster stability:")
-    # for k in sorted(stab_final):
-    #     print(f"Cluster_{k}: {stab_final[k]:.4f}")
-
-    # Co-association matrix
-    coassoc = coassociation_matrix(
-        X_asd_scaled,
-        embed_method=EMBED_METHOD,
-        B=B_BOOT,
-        pca_var=PCA_VAR,
-        umap_n_neighbors=UMAP_N_NEIGHBORS,
-        umap_min_dist=UMAP_MIN_DIST,
-        umap_n_components=UMAP_N_COMPONENTS,
-        min_cluster_size=MIN_CLUSTER_SIZE,
-        min_samples=MIN_SAMPLES,
-        random_state=RANDOM_STATE
+        minK=2,
+        maxK=12,
+        reps=500,
+        pItem=0.8
     )
 
-    # Consensus delta curve -> best k
-    areas, deltas, cdfs = consensus_delta_curve(coassoc, K_RANGE)
-    # best_k = pick_best_k(areas, deltas)
-    best_k = elbow_kneedle(deltas)
-    # best_k = 12
+    # Additional metric plots
+    plot_pac_curve(cc_dict["pac"])
+    plot_stability_curve(cc_dict["avg_consensus"])
 
-    plt.figure(figsize=(7, 4))
-    plt.plot(list(deltas.keys()), list(deltas.values()), marker="o")
-    plt.xlabel("k")
-    plt.ylabel("Delta Area")
-    plt.title("Consensus Delta Curve")
-    plt.tight_layout()
-    plt.show()
+    # Choose best K 
+    best_k_info = choose_best_k(cc_dict)
+    best_k = best_k_info["final"]
+    best_k = 5
 
-    print("Best k:", best_k)
+    # Extract best consensus matrix and final consensus labels
+    consensus_best = cc_dict["consensus_mats"][best_k]
+    consensus_labels = consensus_clusterer(consensus_best, best_k)
 
-    # Consensus clustering
-    consensus_labels = consensus_clustering(coassoc, 14)
+    # Attach labels to ASD dataframe
+    df_asd = df_asd.copy()
     df_asd["consensus_cluster"] = consensus_labels
 
-    print("\nConsensus cluster sizes:")
-    print(df_asd["consensus_cluster"].value_counts().sort_index())
+    # Silhouette on consensus distance
+    sil = silhouette_score(1 - consensus_best, consensus_labels, metric="precomputed")
+    print(f"\nSilhouette (consensus distance, k={best_k}): {sil:.3f}")
 
-    # Dendrogram ordering + sorted heatmap
-    order, Z = dendrogram_order(coassoc)
-    # plot_heatmap(coassoc[np.ix_(order, order)],
-    #              f"Consensus Co-association (sorted), k={best_k}")
-
-    plot_consensus_with_labels(
-        coassoc=coassoc,
-        labels=consensus_labels,
-        title="Consensus Co-association (sorted), k=19",
-        cmap="Reds"
-    )
-
-    plot_dendrogram(Z)
-
-    # UMAP2D visualization
-    umap2d = fit_umap_2d(X_asd_scaled, random_state=RANDOM_STATE)
-    plot_umap_clusters(umap2d, consensus_labels,
-                       f"ASD Consensus Clusters (k={best_k})")
-
-    # Profiles + significance
+    # ============================================================
+    # CLUSTER PROFILES + SIGNIFICANCE
+    # ============================================================
     prof = cluster_profiles(df_asd, FEATURES)
     print("\n=== Consensus cluster profiles ===")
-    for p in prof:
-        print("\n")
-        print(p)
-        print(prof[p])
+    for feat, table in prof.items():
+        print("\n", feat)
+        print(table)
 
     significance_tests(df_asd, FEATURES)
 
-    # Silhouette on consensus distance (optional)
-    try:
-        sil = silhouette_score(1 - coassoc, consensus_labels, metric="precomputed")
-        print(f"\nSilhouette (consensus distance): {sil:.3f}")
-    except Exception:
-        print("\nSilhouette failed (degenerate distances likely).")
-
-    # TD projection + contamination
+    # ============================================================
+    # TD PROJECTION + CONTAMINATION
+    # ============================================================
     clf = train_asd_consensus_classifier(X_asd_embed, consensus_labels)
     df_td, _ = project_td_to_consensus(
         df, FEATURES, scaler, pca_model, umap_model, clf
     )
     if df_td is not None:
         contam_df = td_contamination(df_asd, df_td, label_col="consensus_cluster")
-
 
         plt.figure(figsize=(6, 4))
         sns.barplot(data=contam_df, x="cluster", y="td_fraction")
@@ -1176,7 +891,7 @@ if __name__ == "__main__":
 
         plt.text(
             0.5, 1.01,
-            f"TD Contamination Results:",
+            "TD Contamination Results:",
             ha="center", va="bottom",
             fontsize=14, fontweight="bold",
             transform=ax.transAxes
@@ -1193,23 +908,10 @@ if __name__ == "__main__":
         table.set_fontsize(9)
         table.scale(1, 1.3)
 
-        fname = ("TD_Contamination_Report.pdf")
+        fname = "TD_Contamination_Report.pdf"
         plt.savefig(fname, bbox_inches="tight")
         plt.close()
 
     # Save ASD-labeled output
     df_asd.to_csv("asd_consensus_labeled.csv", index=False)
     print("\nSaved ASD consensus labels: asd_consensus_labeled.csv")
-
-    # Consensus clustering
-    for temp_k in range(2,best_k+1):
-        consensus_labels = consensus_clustering(coassoc, temp_k)
-        sil = silhouette_score(1 - coassoc, consensus_labels, metric="precomputed")
-        print(f"\nSilhouette (k = {temp_k}): {sil:.3f}")
-
-        plot_consensus_with_labels(
-            coassoc=coassoc,
-            labels=consensus_labels,
-            title=f"Consensus Co-association (sorted), k={temp_k}",
-            cmap="Reds"
-        )
