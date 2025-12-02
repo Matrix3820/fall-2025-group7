@@ -8,9 +8,11 @@ import shap
 import matplotlib.pyplot as plt
 
 from .xgboost_model import XGBoostClassifier
+from visualization import save_figure_multi_formats
 
 data_version = "Data_v4"
 model_version = "V4"
+
 
 def _results_dir() -> Path:
     current_dir = Path(__file__).parent
@@ -34,8 +36,8 @@ def _load_model_and_data() -> tuple[XGBoostClassifier, pd.DataFrame, pd.DataFram
 def explain_global(sample_size: int = 2000, random_state: int = 42) -> dict:
     """
     Creates global SHAP explanations:
-      - summary beeswarm (PNG)
-      - summary bar plot (PNG)
+      - summary beeswarm
+      - summary bar
       - saves mean |SHAP| per feature to JSON
     """
     rd = _results_dir()
@@ -47,24 +49,29 @@ def explain_global(sample_size: int = 2000, random_state: int = 42) -> dict:
     explainer = shap.TreeExplainer(clf.model)
     shap_values = explainer.shap_values(Xs)
 
-    # Save mean |SHAP| stats
+    # Save mean |SHAP|
     mean_abs = np.abs(shap_values).mean(axis=0)
     mean_abs_dict = {feat: float(val) for feat, val in zip(clf.feature_names, mean_abs)}
-    with open(rd / f"shap_global_mean_abs_{model_version}.json", "w") as f:
-        json.dump(dict(sorted(mean_abs_dict.items(), key=lambda kv: kv[1], reverse=True)), f, indent=2)
 
-    # Beeswarm
+    with open(rd / f"shap_global_mean_abs_{model_version}.json", "w") as f:
+        json.dump(
+            dict(sorted(mean_abs_dict.items(), key=lambda kv: kv[1], reverse=True)),
+            f,
+            indent=2,
+        )
+
+    # Beeswarm plot
     plt.figure(figsize=(12, 7))
     shap.summary_plot(shap_values, Xs, show=False)
     plt.tight_layout()
-    plt.savefig(rd / f"shap_summary_beeswarm_{model_version}.png", dpi=300, bbox_inches="tight")
+    save_figure_multi_formats(plt.gcf(), rd / f"shap_summary_beeswarm_{model_version}")
     plt.close()
 
-    # Bar
+    # Bar plot
     plt.figure(figsize=(10, 7))
     shap.summary_plot(shap_values, Xs, plot_type="bar", show=False)
     plt.tight_layout()
-    plt.savefig(rd / f"shap_summary_bar_{model_version}.png", dpi=300, bbox_inches="tight")
+    save_figure_multi_formats(plt.gcf(), rd / f"shap_summary_bar_{model_version}")
     plt.close()
 
     return {
@@ -79,8 +86,7 @@ def explain_global(sample_size: int = 2000, random_state: int = 42) -> dict:
 
 def explain_local(indices: Optional[Sequence[int]] = None, top_n: int = 15, random_state: int = 0) -> list[dict]:
     """
-    Creates SHAP waterfall plots for specific row indices (from train.csv).
-    If indices is None, pick 3 random rows.
+    Creates SHAP waterfall plots for specific row indices.
     """
     rd = _results_dir()
     clf, X, Xs, _ = _load_model_and_data()
@@ -90,25 +96,29 @@ def explain_local(indices: Optional[Sequence[int]] = None, top_n: int = 15, rand
         indices = rng.choice(len(Xs), size=min(3, len(Xs)), replace=False).tolist()
 
     explainer = shap.TreeExplainer(clf.model)
-    sv = explainer.shap_values(Xs)
+    shap_vals = explainer.shap_values(Xs)
 
     out = []
     for idx in indices:
         row = Xs.iloc[int(idx)]
-        shap_row = sv[int(idx)]
+        shap_row = shap_vals[int(idx)]
         base_value = float(explainer.expected_value)
 
-        # Waterfall plot
         plt.figure(figsize=(10, 6))
         shap.plots._waterfall.waterfall_legacy(
-            base_value, shap_row, feature_names=list(Xs.columns), max_display=top_n, show=False
+            base_value,
+            shap_row,
+            feature_names=list(Xs.columns),
+            max_display=top_n,
+            show=False
         )
         plt.tight_layout()
-        png_path = rd / f"shap_local_idx{idx}_{model_version}.png"
-        plt.savefig(png_path, dpi=300, bbox_inches="tight")
+
+        base = rd / f"shap_local_idx{idx}_{model_version}"
+        save_figure_multi_formats(plt.gcf(), base)
         plt.close()
 
-        out.append({"index": int(idx), "plot": str(png_path), "base_value": base_value})
+        out.append({"index": int(idx), "plot": str(base.with_suffix('.png')), "base_value": base_value})
 
     return out
 

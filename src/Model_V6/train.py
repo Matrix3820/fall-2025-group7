@@ -34,8 +34,20 @@ def run_complete_training_pipeline():
 
         print("\nSTEP 2: Model Training")
         print("-" * 30)
-        classifier, training_results = train_xgboost_model()
-        print("Model training completed successfully.")
+
+        # -----------------------------------------------
+        # SKIP TRAINING IF MODEL ALREADY EXISTS
+        # -----------------------------------------------
+        model_path = os.path.join('..', '..', 'Results', model_version, f"xgboost_model_{model_version}.pkl")
+
+        if os.path.exists(model_path):
+            print(f"Model already exists at {model_path}. Skipping Optuna training step.")
+            print("Loading existing model instead.")
+            classifier = None
+            training_results = None
+        else:
+            classifier, training_results = train_xgboost_model()
+            print("Model training completed successfully.")
 
         print("\n" + "=" * 60)
         print("TRAINING PIPELINE COMPLETED SUCCESSFULLY")

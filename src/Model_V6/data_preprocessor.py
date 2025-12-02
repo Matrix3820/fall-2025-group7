@@ -28,9 +28,11 @@ sys.path.append(str(agent_dir))
 data_version = "Data_v6"
 model_version = "V6"
 
-from llama_agent import MetaLlamaAgent as SonnetAgent
-# from qwen_agent import QwenAgent as SonnetAgent
 
+from qwen_agent import QwenAgent as SonnetAgent
+# from sonnet_agent import SonnetAgent
+
+# from trial_data_preprocess import preprocess_trial_data
 
 try:
     nltk.data.find('tokenizers/punkt')
@@ -46,30 +48,41 @@ except LookupError:
 def preprocess_training_data():
     current_dir = Path(__file__).parent
     project_root = current_dir.parent.parent
-    data_path = project_root / "data" / data_version / "LLM data_aggregate_8.25.25 data_updated 10.8.25.csv"
+    data_path = project_root / "data" / data_version / "LLM data.csv"
 
     print(f"Loading data from: {data_path}")
     df = pd.read_csv(data_path)
     # df = df.sample(n=60, random_state=42)
     print(f"Original data shape: {df.shape}")
 
-    artifacts_dir = project_root / "Results" / model_version / "preprocessing"
-    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Loading Trial Level Data :")
+    # trial_data_df = preprocess_trial_data()
+    trial_data_path = project_root / "data" / data_version / "LLM data_aggregate_8.25.25 data_updated 10.8.25.csv"
+    trial_data_df = pd.read_csv(trial_data_path)
 
-    # print(f"Loading Trial Level Data :")
-    # # trial_data_df = preprocess_trial_data()
-    # trial_data_path = project_root / "data" / data_version / "LLM data_aggregate_8.25.25 data_updated 10.8.25.csv"
-    # trial_data_df = pd.read_csv(trial_data_path)
+    # needed = {"sub", "overall_concept_learning", "TDnorm_concept_learning", "TDNorm_avg_PE", "overall_avg_PE"}
+    # missing_cols = needed - set(trial_data_df.columns)
+    # if missing_cols:
+    #     raise ValueError(f"[trial_data_df] missing expected columns: {missing_cols}")
+    #
+    # print("Merging Trial Level data with Base Dataset on 'sub'...")
+    # merged_df = pd.merge(df, trial_data_df, on="sub", how="inner")
 
-    selected_columns = ['td_or_asd', 'FSR',
+    selected_columns = ['sub', 'td_or_asd', 'FSR', 'BIS', 'SRS.Raw',
                         'TDNorm_avg_PE', 'overall_avg_PE', 'TDnorm_concept_learning',
                         'overall_concept_learning', 'free_response_TDprof_norm']
 
-    df_filtered = df[selected_columns].copy()
+    # missing_for_select = [c for c in selected_columns if c not in merged_df.columns]
+    # if missing_for_select:
+    #     raise KeyError(f"Missing columns after merge: {missing_for_select}")
 
-    df_filtered = df_filtered.dropna(subset=['FSR',
-                        'TDNorm_avg_PE', 'overall_avg_PE', 'TDnorm_concept_learning',
-                        'overall_concept_learning', 'free_response_TDprof_norm'])
+    # df_filtered = merged_df[selected_columns].copy()
+    df_filtered = trial_data_df[selected_columns].copy()
+
+    # ---------- Save metadata ----------
+    artifacts_dir = project_root / "Results" / model_version / "preprocessing"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+
 
 
     preprocessing_info = {
@@ -381,13 +394,9 @@ def preprocess_prediction_data(df, is_test_data=False):
 
     print("Preprocessing info loaded successfully.")
 
-    selected_columns = ['td_or_asd', 'FSR',
-                        'TDNorm_avg_PE', 'overall_avg_PE', 'TDnorm_concept_learning',
-                        'overall_concept_learning', 'free_response_TDprof_norm']
+    selected_columns = ['TDNorm_avg_PE', 'overall_avg_PE', 'free_response_TDprof_norm', 'td_or_asd']
     df_filtered = df[selected_columns].copy()
-    df_filtered = df_filtered.dropna(subset=['FSR',
-                        'TDNorm_avg_PE', 'overall_avg_PE', 'TDnorm_concept_learning',
-                        'overall_concept_learning', 'free_response_TDprof_norm'])
+    df_filtered = df_filtered.dropna(subset=['TDNorm_avg_PE', 'overall_avg_PE', 'free_response_TDprof_norm'])
 
     processed_df = process_features(df_filtered)
 

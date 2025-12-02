@@ -9,7 +9,7 @@ model_version = "V4"
 
 def run_complete_training_pipeline():
     print("=" * 60)
-    print("STARTING MODEL V2 TRAINING PIPELINE")
+    print("STARTING MODEL V4 TRAINING PIPELINE")
     print("=" * 60)
 
     try:

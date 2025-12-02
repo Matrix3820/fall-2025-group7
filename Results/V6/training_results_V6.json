@@ -1,29 +1,20 @@
 {
-  "cv_accuracy_mean": 0.9068838804507596,
-  "cv_accuracy_std": 0.0065480182402756415,
-  "cv_auc_mean": 0.9378011033174409,
-  "cv_auc_std": 0.008619816905657862,
-  "cv_scores_accuracy": [
-    0.8980891719745223,
-    0.9171974522292994,
-    0.910828025477707,
-    0.9044585987261147,
-    0.9038461538461539
-  ],
-  "cv_scores_auc": [
-    0.943618125216188,
-    0.9437910757523348,
-    0.9241611898996888,
-    0.9311656866136284,
-    0.9462694391053643
+  "cv_accuracy_mean": 0.8938547486033521,
+  "cv_accuracy_std": 0.023701903279996012,
+  "cv_scores": [
+    0.8659217877094972,
+    0.88268156424581,
+    0.8770949720670391,
+    0.9162011173184358,
+    0.9273743016759777
   ],
   "n_features": 64,
   "feature_names": [
+    "TDNorm_avg_PE",
+    "overall_avg_PE",
     "TDnorm_concept_learning",
     "overall_concept_learning",
     "FSR_scaled",
-    "TDNorm_avg_PE_scaled",
-    "overall_avg_PE_scaled",
     "personality_inference_mentioned",
     "personality_inference_positive",
     "personality_inference_negative",
@@ -83,29 +74,5 @@
     "negative_word_ratio",
     "flesch_reading_ease",
     "flesch_kincaid_grade"
-  ],
-  "used_params": {
-    "n_estimators": 400,
-    "max_depth": 7,
-    "learning_rate": 0.12649761253700337,
-    "subsample": 0.2928560195973004,
-    "colsample_bytree": 0.6298026194491024,
-    "min_child_weight": 21,
-    "gamma": 10.039966891790943,
-    "reg_alpha": 9.878947941187393e-07,
-    "reg_lambda": 0.03216090586309192,
-    "random_state": 42,
-    "eval_metric": "logloss",
-    "booster": "dart",
-    "max_leaves": 5772,
-    "grow_policy": "lossguide",
-    "colsample_bylevel": 0.9897994236985435,
-    "colsample_bynode": 0.8066239770203751,
-    "max_bin": 1808,
-    "scale_pos_weight": 1.013776093943703,
-    "sample_type": "weighted",
-    "normalize_type": "forest",
-    "rate_drop": 0.27254599988239464,
-    "skip_drop": 0.4006174879700889
-  }
+  ]
 }

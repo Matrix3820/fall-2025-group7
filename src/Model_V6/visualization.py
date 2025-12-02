@@ -51,7 +51,7 @@ class ModelVisualizer:
                     f'{importances[i]:.3f}', va='center', fontsize=8)
         
         plt.tight_layout()
-        plt.savefig(self.viz_dir / f'feature_importance_{model_version}.png', dpi=300, bbox_inches='tight')
+        save_figure_multi_formats(plt.gcf(), self.viz_dir / f'feature_importance_{model_version}')
         plt.close()
     
     def create_characteristic_importance_plot(self, explainability_data):
@@ -88,7 +88,8 @@ class ModelVisualizer:
                     f'{count}', ha='center', va='bottom', fontsize=8)
         
         plt.tight_layout()
-        plt.savefig(self.viz_dir / f'characteristic_importance_{model_version}.png', dpi=300, bbox_inches='tight')
+        save_figure_multi_formats(plt.gcf(), self.viz_dir / f'characteristic_importance_{model_version}')
+
         plt.close()
     
     def create_td_vs_asd_comparison_plot(self, explainability_data):
@@ -121,8 +122,6 @@ class ModelVisualizer:
             # Calculate TDNorm - PE averages
             td_pe_avg = train_df[train_df['td_or_asd'] == 1]['TDNorm_avg_PE'].mean()
             asd_pe_avg = train_df[train_df['td_or_asd'] == 0]['TDNorm_avg_PE'].mean()
-
-
             
             # Normalize FSR and PE to match the scale of mention rates (0-1)
             # FSR normalization - scale to 0-1 range based on data range
@@ -137,8 +136,8 @@ class ModelVisualizer:
             td_pe_norm = (td_pe_avg - pe_min) / (pe_max - pe_min) if pe_max > pe_min else 0
             asd_pe_norm = (asd_pe_avg - pe_min) / (pe_max - pe_min) if pe_max > pe_min else 0
             
-            # Add FSR and TDNorm-PE to the data
-            characteristics.extend(['FSR', 'TDNorm_avg_PE'])
+            # Add FSR and PE to the data
+            characteristics.extend(['FSR', 'PE'])
             td_mentioned.extend([td_fsr_norm, td_pe_norm])
             asd_mentioned.extend([asd_fsr_norm, asd_pe_norm])
         
@@ -167,19 +166,12 @@ class ModelVisualizer:
                    f'{height:.2f}', ha='center', va='bottom', fontsize=8)
         
         plt.tight_layout()
-        plt.savefig(self.viz_dir / f'td_vs_asd_comparison_{model_version}.png', dpi=300, bbox_inches='tight')
+        save_figure_multi_formats(plt.gcf(), self.viz_dir / f'td_vs_asd_comparison_{model_version}')
         plt.close()
     
     def create_model_performance_plot(self, training_results):
-        # cv_scores = training_results['cv_scores']
-        # Handle backward compatibility between old and new keys
-        if 'cv_scores' in training_results:
-            cv_scores = training_results['cv_scores']
-        elif 'cv_scores_accuracy' in training_results:
-            cv_scores = training_results['cv_scores_accuracy']
-        else:
-            raise KeyError("No cross-validation scores found in training_results.")
-
+        cv_scores = training_results['cv_scores']
+        
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
         
         ax1.bar(range(len(cv_scores)), cv_scores, alpha=0.7, color='green')
@@ -205,7 +197,7 @@ class ModelVisualizer:
                 ha='center', va='bottom', fontweight='bold')
         
         plt.tight_layout()
-        plt.savefig(self.viz_dir / f'model_performance_{model_version}.png', dpi=300, bbox_inches='tight')
+        save_figure_multi_formats(plt.gcf(), self.viz_dir / f'model_performance_{model_version}')
         plt.close()
     
     def create_confusion_matrix_plot(self, test_results_path=None):
@@ -229,7 +221,7 @@ class ModelVisualizer:
         plt.ylabel('Actual')
         
         plt.tight_layout()
-        plt.savefig(self.viz_dir / f'confusion_matrix_{model_version}.png', dpi=300, bbox_inches='tight')
+        save_figure_multi_formats(plt.gcf(), self.viz_dir / f'confusion_matrix_{model_version}')
         plt.close()
     
     def create_feature_importance_by_target_plot(self, explainability_data):
@@ -303,10 +295,18 @@ class ModelVisualizer:
                         f'{val:.2f}', ha='center', va='bottom', fontsize=8)
         
         plt.tight_layout()
-        plt.savefig(self.viz_dir / f'feature_importance_by_target_{model_version}.png', dpi=300, bbox_inches='tight')
+        save_figure_multi_formats(plt.gcf(), self.viz_dir / f'feature_importance_by_target_{model_version}')
         plt.close()
         
         print(f"Feature importance by target plot saved to: {self.viz_dir / f'feature_importance_by_target_{model_version}.png'}")
+
+# -------------------------------------------------------------------
+# Multi-format save utility
+# -------------------------------------------------------------------
+def save_figure_multi_formats(fig, base_path, formats=("png", "pdf", "svg")):
+    base_path = Path(base_path)
+    for ext in formats:
+        fig.savefig(base_path.with_suffix(f".{ext}"), dpi=300, bbox_inches="tight")
 
 def create_visualizations():
     visualizer = ModelVisualizer()

@@ -1,4 +1,3 @@
-# added optuna search and used all char+NLP + other important features from dataset. 
 import pandas as pd
 import numpy as np
 import xgboost as xgb
@@ -14,12 +13,11 @@ import optuna
 from optuna.exceptions import TrialPruned
 from optuna.samplers import TPESampler
 from optuna.pruners import MedianPruner
-
 optuna.logging.set_verbosity(optuna.logging.WARNING)
+
 
 data_version = "Data_v6"
 model_version = "V6"
-
 
 def convert_numpy_types(obj):
     if isinstance(obj, (np.integer, np.int64)):
@@ -35,25 +33,24 @@ def convert_numpy_types(obj):
     else:
         return obj
 
-
 class XGBoostClassifier:
     def __init__(self):
         self.model = None
         self.scaler = StandardScaler()
         self.feature_names = None
         self.feature_importance = None
-
+        
     def load_data(self, data_path=None):
         if data_path is None:
             current_dir = Path(__file__).parent
             project_root = current_dir.parent.parent
             data_path = project_root / "data" / data_version / f"LLM_data_train_preprocessed_{model_version}.csv"
-
+        
         df = pd.read_csv(data_path)
         return df
-
+    
     def prepare_features(self, df):
-        exclude_columns = ['FSR', 'TDNorm_avg_PE', 'overall_avg_PE', 'free_response_TDprof_norm', 'td_or_asd']
+        exclude_columns = []
 
         feature_columns = []
         for col in df.columns:
@@ -61,95 +58,95 @@ class XGBoostClassifier:
                 if df[col].dtype in ['int64', 'float64', 'bool']:
                     feature_columns.append(col)
 
-        # feature_columns = [
-        #     # 'sub',
-        #     # 'td_or_asd',
-        #     # 'FSR',
-        #     # 'BIS',
-        #     # 'SRS.Raw',
-        #     # 'free_response_TDprof_norm',
-        #     # 'TDNorm_avg_PE_scaled',
-        #     # 'overall_avg_PE_scaled',
-        #     'TDNorm_avg_PE',
-        #     'overall_avg_PE',
-        #     'TDnorm_concept_learning',
-        #     'overall_concept_learning',
-        #     'FSR_scaled',
-        #
-        #     'personality_inference_mentioned',
-        #     'personality_inference_positive',
-        #     'personality_inference_negative',
-        #     'personality_inference_neutral',
-        #     'sweets_mentioned',
-        #     'sweets_positive',
-        #     'sweets_negative',
-        #     'sweets_neutral',
-        #     'Fruits_and_vegetables_mentioned',
-        #     'Fruits_and_vegetables_positive',
-        #     'Fruits_and_vegetables_negative',
-        #     'Fruits_and_vegetables_neutral',
-        #     'healthy_savory_food_mentioned',
-        #     'healthy_savory_food_positive',
-        #     'healthy_savory_food_negative',
-        #     'healthy_savory_food_neutral',
-        #     'food_mentioned',
-        #     'food_positive',
-        #     'food_negative',
-        #     'food_neutral',
-        #     'cosmetics_mentioned',
-        #     'cosmetics_positive',
-        #     'cosmetics_negative',
-        #     'cosmetics_neutral',
-        #     'fashion_mentioned',
-        #     'fashion_positive',
-        #     'fashion_negative',
-        #     'fashion_neutral',
-        #     'toys_gadgets_and_games_mentioned',
-        #     'toys_gadgets_and_games_positive',
-        #     'toys_gadgets_and_games_negative',
-        #     'toys_gadgets_and_games_neutral',
-        #     'sports_mentioned',
-        #     'sports_positive',
-        #     'sports_negative',
-        #     'sports_neutral',
-        #     'music_mentioned',
-        #     'music_positive',
-        #     'music_negative',
-        #     'music_neutral',
-        #     'arts_and_crafts_mentioned',
-        #     'arts_and_crafts_positive',
-        #     'arts_and_crafts_negative',
-        #     'arts_and_crafts_neutral',
-        #     'word_count',
-        #     'sentence_count',
-        #     'char_count',
-        #     'avg_word_length',
-        #     'avg_sentence_length',
-        #     'shortness_score',
-        #     'lexical_diversity',
-        #     'sentiment_polarity',
-        #     'sentiment_subjectivity',
-        #     'positive_word_count',
-        #     'negative_word_count',
-        #     'positive_word_ratio',
-        #     'negative_word_ratio',
-        #     'flesch_reading_ease',
-        #     'flesch_kincaid_grade',
-        #
-        # ]
+        feature_columns = [
+            # 'sub',
+            # 'td_or_asd',
+            # 'FSR',
+            # 'BIS',
+            # 'SRS.Raw',
+            # 'free_response_TDprof_norm',
+            # 'TDNorm_avg_PE_scaled',
+            # 'overall_avg_PE_scaled',
+            'TDNorm_avg_PE',
+            'overall_avg_PE',
+            'TDnorm_concept_learning',
+            'overall_concept_learning',
+            'FSR_scaled',
+
+            'personality_inference_mentioned',
+            'personality_inference_positive',
+            'personality_inference_negative',
+            'personality_inference_neutral',
+            'sweets_mentioned',
+            'sweets_positive',
+            'sweets_negative',
+            'sweets_neutral',
+            'Fruits_and_vegetables_mentioned',
+            'Fruits_and_vegetables_positive',
+            'Fruits_and_vegetables_negative',
+            'Fruits_and_vegetables_neutral',
+            'healthy_savory_food_mentioned',
+            'healthy_savory_food_positive',
+            'healthy_savory_food_negative',
+            'healthy_savory_food_neutral',
+            'food_mentioned',
+            'food_positive',
+            'food_negative',
+            'food_neutral',
+            'cosmetics_mentioned',
+            'cosmetics_positive',
+            'cosmetics_negative',
+            'cosmetics_neutral',
+            'fashion_mentioned',
+            'fashion_positive',
+            'fashion_negative',
+            'fashion_neutral',
+            'toys_gadgets_and_games_mentioned',
+            'toys_gadgets_and_games_positive',
+            'toys_gadgets_and_games_negative',
+            'toys_gadgets_and_games_neutral',
+            'sports_mentioned',
+            'sports_positive',
+            'sports_negative',
+            'sports_neutral',
+            'music_mentioned',
+            'music_positive',
+            'music_negative',
+            'music_neutral',
+            'arts_and_crafts_mentioned',
+            'arts_and_crafts_positive',
+            'arts_and_crafts_negative',
+            'arts_and_crafts_neutral',
+            'word_count',
+            'sentence_count',
+            'char_count',
+            'avg_word_length',
+            'avg_sentence_length',
+            'shortness_score',
+            'lexical_diversity',
+            'sentiment_polarity',
+            'sentiment_subjectivity',
+            'positive_word_count',
+            'negative_word_count',
+            'positive_word_ratio',
+            'negative_word_ratio',
+            'flesch_reading_ease',
+            'flesch_kincaid_grade',
+
+        ]
 
         X = df[feature_columns].copy()
         y = df['td_or_asd'].copy()
-
+        
         X = X.fillna(0)
-
+        
         self.feature_names = feature_columns
-
+        
         print(f"Selected {len(feature_columns)} features.")
         # print(f"Feature columns: {feature_columns}")
         return X, y
 
-    ##################### OPTUNA ########################
+   ##################### OPTUNA ########################
     def tune_with_optuna(
             self,
             X,
@@ -221,6 +218,15 @@ class XGBoostClassifier:
                 "alpha": trial.suggest_float("reg_alpha", 1e-8, 300.0, log=True),
                 "lambda": trial.suggest_float("reg_lambda", 1e-8, 300.0, log=True),
 
+                # imbalance
+                "scale_pos_weight": trial.suggest_float(
+                    "scale_pos_weight",
+                    max(0.05, (spw_guess or 1.0) * 0.1),
+                    max(50.0, (spw_guess or 1.0) * 6.0),
+                    log=True
+                )
+                if spw_guess else 1.0,
+
                 # bins & predictor
                 "max_bin": trial.suggest_int("max_bin", 64, 2048),
 
@@ -228,24 +234,6 @@ class XGBoostClassifier:
                 "seed": random_state,
                 "nthread": 1,
             }
-            # imbalance
-            # "scale_pos_weight": trial.suggest_float(
-            #     "scale_pos_weight",
-            #     max(0.05, (spw_guess or 1.0) * 0.1),
-            #     max(50.0, (spw_guess or 1.0) * 6.0),
-            #     log=True
-            # )
-            # if spw_guess else 1.0,
-
-            if spw_guess:
-                params["scale_pos_weight"] = trial.suggest_float(
-                    "scale_pos_weight",
-                    max(0.05, spw_guess * 0.1),
-                    max(50.0, spw_guess * 6.0),
-                    log=True
-                )
-            else:
-                params["scale_pos_weight"] = 1.0
 
             if booster == "dart":
                 params.update({
@@ -255,8 +243,7 @@ class XGBoostClassifier:
                     "skip_drop": trial.suggest_float("skip_drop", 0.0, 0.8),
                 })
 
-            num_boost_round = trial.suggest_int("n_estimators", 800, 20000,
-                                                step=200)  # more rounds; early stopping will cap it
+            num_boost_round = trial.suggest_int("n_estimators", 800, 20000, step=200)  # more rounds; early stopping will cap it
 
             early_stopping_rounds = trial.suggest_int("early_stopping_rounds", 100, 400, step=50)
 
@@ -273,7 +260,7 @@ class XGBoostClassifier:
                         nfold=cv_splits,
                         stratified=True,
                         seed=seed_i,
-                        # early_stopping_rounds=early_stopping_rounds,
+                        early_stopping_rounds=early_stopping_rounds,
                         verbose_eval=False,
                     )
                 except TypeError:
@@ -345,49 +332,48 @@ class XGBoostClassifier:
         print(f"[Optuna] Best Params:\n{best_params}")
 
         return best_params, self.best_score_
-
-    ##############################################################################
-    # def train_model(self, X, y, random_state=42):
-    #     X_scaled = self.scaler.fit_transform(X)
-    #
-    #     self.model = xgb.XGBClassifier(**{
-    #         "booster": "dart",
-    #         "max_depth": 6,
-    #         "min_child_weight": 45,
-    #         "max_leaves": 1030,
-    #         "grow_policy": "depthwise",
-    #         "learning_rate": 0.10810109913557502,
-    #         "subsample": 0.9504094778274954,
-    #         "colsample_bytree": 0.9835838303754004,
-    #         "colsample_bylevel": 0.9745161890663262,
-    #         "colsample_bynode": 0.47576016392813497,
-    #         "gamma": 1.8162036355522655,
-    #         "reg_alpha": 0.0813636308766135,
-    #         "reg_lambda": 10.310586595956945,
-    #         "scale_pos_weight": 1.3321875637042824,
-    #         "max_bin": 161,
-    #         "sample_type": "weighted",
-    #         "normalize_type": "tree",
-    #         "rate_drop": 0.43991549330770086,
-    #         "skip_drop": 0.6122020811068443,
-    #         "n_estimators": 61
-    #     })
-    #
-    #     self.model.fit(X_scaled, y)
-    #
-    #     cv_scores = cross_val_score(self.model, X_scaled, y, cv=StratifiedKFold(n_splits=5, shuffle=True, random_state=random_state), scoring='accuracy')
-    #
-    #     self.feature_importance = dict(zip(self.feature_names, self.model.feature_importances_))
-    #
-    #     training_results = {
-    #         'cv_accuracy_mean': float(cv_scores.mean()),
-    #         'cv_accuracy_std': float(cv_scores.std()),
-    #         'cv_scores': cv_scores.tolist(),
-    #         'n_features': len(self.feature_names),
-    #         'feature_names': self.feature_names
-    #     }
-    #
-    #     return training_results
+# #############################################################################
+#     def train_model(self, X, y, random_state=42):
+#         X_scaled = self.scaler.fit_transform(X)
+#
+#         self.model = xgb.XGBClassifier(**{
+#             "booster": "dart",
+#             "max_depth": 6,
+#             "min_child_weight": 45,
+#             "max_leaves": 1030,
+#             "grow_policy": "depthwise",
+#             "learning_rate": 0.10810109913557502,
+#             "subsample": 0.9504094778274954,
+#             "colsample_bytree": 0.9835838303754004,
+#             "colsample_bylevel": 0.9745161890663262,
+#             "colsample_bynode": 0.47576016392813497,
+#             "gamma": 1.8162036355522655,
+#             "reg_alpha": 0.0813636308766135,
+#             "reg_lambda": 10.310586595956945,
+#             "scale_pos_weight": 1.3321875637042824,
+#             "max_bin": 161,
+#             "sample_type": "weighted",
+#             "normalize_type": "tree",
+#             "rate_drop": 0.43991549330770086,
+#             "skip_drop": 0.6122020811068443,
+#             "n_estimators": 61
+#         })
+#
+#         self.model.fit(X_scaled, y)
+#
+#         cv_scores = cross_val_score(self.model, X_scaled, y, cv=StratifiedKFold(n_splits=5, shuffle=True, random_state=random_state), scoring='accuracy')
+#
+#         self.feature_importance = dict(zip(self.feature_names, self.model.feature_importances_))
+#
+#         training_results = {
+#             'cv_accuracy_mean': float(cv_scores.mean()),
+#             'cv_accuracy_std': float(cv_scores.std()),
+#             'cv_scores': cv_scores.tolist(),
+#             'n_features': len(self.feature_names),
+#             'feature_names': self.feature_names
+#         }
+#
+#         return training_results
 
     def train_model(self, X, y, random_state=42, params: dict | None = None):
         X_scaled = self.scaler.fit_transform(X)
@@ -431,29 +417,30 @@ class XGBoostClassifier:
         }
         return training_results
 
+
     def get_feature_importance_sorted(self, top_n=20):
         if self.feature_importance is None:
             return None
         return sorted(self.feature_importance.items(), key=lambda x: x[1], reverse=True)[:top_n]
-
+    
     def save_model(self, model_dir=None):
         if model_dir is None:
             current_dir = Path(__file__).parent
             project_root = current_dir.parent.parent
             model_dir = project_root / "Results" / model_version
-
+        
         model_dir = Path(model_dir)
         model_dir.mkdir(parents=True, exist_ok=True)
-
+        
         with open(model_dir / f'xgboost_model_{model_version}.pkl', 'wb') as f:
             pickle.dump(self.model, f)
-
+        
         with open(model_dir / f'scaler_{model_version}.pkl', 'wb') as f:
             pickle.dump(self.scaler, f)
-
+        
         with open(model_dir / f'feature_names_{model_version}.pkl', 'wb') as f:
             pickle.dump(self.feature_names, f)
-
+        
         if self.feature_importance:
             feature_importance_serializable = convert_numpy_types(self.feature_importance)
             with open(model_dir / f'feature_importance_{model_version}.json', 'w') as f:
@@ -467,42 +454,42 @@ class XGBoostClassifier:
             with open(model_dir / f'best_score_optuna_{model_version}.txt', 'w') as f:
                 f.write(str(self.best_score_))
 
-        print(f"Model artifacts saved to: {model_dir}")
 
+        print(f"Model artifacts saved to: {model_dir}")
+    
     def load_model(self, model_dir=None):
         if model_dir is None:
             current_dir = Path(__file__).parent
             project_root = current_dir.parent.parent
             model_dir = project_root / "Results" / model_version
-
+        
         model_dir = Path(model_dir)
-
+        
         with open(model_dir / f'xgboost_model_{model_version}.pkl', 'rb') as f:
             self.model = pickle.load(f)
-
+        
         with open(model_dir / f'scaler_{model_version}.pkl', 'rb') as f:
             self.scaler = pickle.load(f)
-
+        
         with open(model_dir / f'feature_names_{model_version}.pkl', 'rb') as f:
             self.feature_names = pickle.load(f)
-
+        
         feature_importance_path = model_dir / f'feature_importance_{model_version}.json'
         if feature_importance_path.exists():
             with open(feature_importance_path, 'r') as f:
                 self.feature_importance = json.load(f)
-
+        
         print(f"Model loaded from: {model_dir}")
-
+    
     def predict(self, X):
         if self.model is None:
             raise ValueError("Model not trained or loaded. Please train or load a model first.")
-
+        
         X_scaled = self.scaler.transform(X)
         predictions = self.model.predict(X_scaled)
         probabilities = self.model.predict_proba(X_scaled)
-
+        
         return predictions, probabilities
-
 
 # def train_xgboost_model():
 #     classifier = XGBoostClassifier()
@@ -543,7 +530,7 @@ def train_xgboost_model(run_optuna: bool = True, n_trials: int = 200):
 
     best_params = None
     if run_optuna:
-        print("[Optuna] Starting hyperparameter search...(no early stopping)")
+        print("[Optuna] Starting hyperparameter search...")
         best_params, best_score = classifier.tune_with_optuna(
             X, y,
             n_trials=n_trials,
@@ -553,34 +540,6 @@ def train_xgboost_model(run_optuna: bool = True, n_trials: int = 200):
             metric="accuracy"
         )
         print(f"[Optuna] Done. Best Accuracy = {best_score:.5f}")
-
-    else:
-        best_params = {
-            'booster': 'dart',
-            'max_depth': 7,
-            'min_child_weight': 21,
-            'max_leaves': 5772,
-            'grow_policy': 'lossguide',
-            'learning_rate': 0.12649761253700337,
-            'subsample': 0.2928560195973004,
-            'colsample_bytree': 0.6298026194491024,
-            'colsample_bylevel': 0.9897994236985435,
-            'colsample_bynode': 0.8066239770203751,
-            'gamma': 10.039966891790943,
-            'reg_alpha': 9.878947941187393e-07,
-            'reg_lambda': 0.03216090586309192,
-            'max_bin': 1808,
-            'scale_pos_weight': 1.013776093943703,
-            'sample_type': 'weighted',
-            'normalize_type': 'forest',
-            'rate_drop': 0.27254599988239464,
-            'skip_drop': 0.4006174879700889,
-        # ✅ Early stopping removed entirely
-        # ✅ Cap n_estimators near best_boost_round_max ≈ 363
-            'n_estimators': 400,
-            'random_state': 42,
-            'eval_metric': 'logloss'
-        }
 
     training_results = classifier.train_model(X, y, params=best_params)
 
@@ -602,10 +561,8 @@ def train_xgboost_model(run_optuna: bool = True, n_trials: int = 200):
 
     return classifier, training_results
 
-
 if __name__ == "__main__":
     classifier, results = train_xgboost_model(run_optuna=True, n_trials=200)
-    # classifier, results = train_xgboost_model(run_optuna=False)
     # classifier, results = train_xgboost_model()
 
 
