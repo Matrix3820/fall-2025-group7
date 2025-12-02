@@ -11,6 +11,8 @@ from PIL import Image
 import plotly.express as px
 from importlib import import_module
 import plotly.figure_factory as ff
+import streamlit.components.v1 as components
+import math
 
 
 
@@ -26,132 +28,19 @@ st.set_page_config(
 CURRENT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = CURRENT_DIR.parent
 RESULTS_ROOT = PROJECT_ROOT / "Results"
+CLUSTER_RESULTS_ROOT = RESULTS_ROOT / "Clustering"
 DATA_ROOT = PROJECT_ROOT / "data"
-# Ensure Root/src is on sys.path so Model_V1, Model_V2, etc. can be imported
+# Ensure Root/src is on sys.path so Model_Vx, etc. can be imported
 SRC_ROOT = PROJECT_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-# ----- Imports for clustering page -----
-import streamlit.components.v1 as components
-
-from Clustering.general_clustering_model import (
-    GeneralClusterAnalyzer,NLP_FEATURES,
-    DATA_VERSION as CLUSTER_DATA_VERSION,
-)
-
-from Clustering.data_preprocessor import preprocess_clustering_data
 
 # print(PROJECT_ROOT)
 # print(RESULTS_ROOT)
 # print(DATA_ROOT)
 # print(SRC_ROOT)
 
-MODEL_OVERVIEW_MD = \
-    {
-
-    "V1": """
-## Model Overview (V1)
-
-Baseline **XGBoost** classifier on core NLP features.
-
-### Key Features
-- Token/char stats, sentiment, readability
-- Basic linguistic cohesion features
-- SHAP + LIME for explainability
-
-### Pipeline
-1. Preprocess text
-2. Feature engineering (core NLP)
-3. XGBoost classification
-4. Explainability (global + local)
-5. Visualization
-""",
-
-    "V2": """
-## Model Overview (V2)
-
-Adds **characteristic-based** features (11 traits) extracted via LLM.
-
-### Key Features
-- All V1 features
-- + 11 characteristic scores from LLM
-- Improved SHAP global consistency
-
-### Pipeline
-1. Preprocess + LLM traits
-2. Feature engineering (core + traits)
-3. XGBoost classification
-4. Explainability
-5. Visualization
-""",
-
-    "V3": """
-## Model Overview (V3)
-
-Refined traits + stronger regularization; calibrated probabilities.
-
-### Key Features
-- All V2 features
-- Probability calibration (Platt/Isotonic)
-- Better class balance handling
-
-### Pipeline
-1. Preprocess + refined traits
-2. Feature engineering
-3. XGBoost + calibration
-4. Explainability
-5. Visualization
-""",
-
-    "V4": """
-## Model Overview (V4)
-
-- Data Source : Data_V4
-- Train-Test Split : 80-20 Stratified Split with Seed 42
-- Key Change : Generated Slope Features
-
-""",
-
-    "V7-1": """
-## Model Overview (V7.1)
-
-- Data Source : Data_V7
-- Features Added : TDNorm PE and Concept Learning
-- Train-Test Split : 80-20 Stratified Split with Seed 42
-- Baseline Model for FSR overlap Test
-""",
-
-    "V7-2": """
-## Model Overview (V7.2)
-
-- Data Source : Data_V7
-- Features Added : TDNorm PE and Concept Learning
-- Train-Test Split : FSR Overlap Region is Training Set
-- Baseline Model for FSR overlap Test
-""",
-
-    "V7-3": """
-## Model Overview (V7.3)
-
-- Data Source : Data_V7
-- Features Added : TDNorm PE and Concept Learning
-- Train-Test Split : FSR Non-Overlap Region is Training Set
-- Baseline Model for FSR overlap Test
-"""
-}
-
-MODEL_INFO = {
-    "V1": "Baseline TD/ASD classifier using core NLP and linguistic features.",
-    "V2": "Enhanced model with characteristic-based features extracted via LLM.",
-    "V3": "Advanced TD/ASD Classification using XGBoost and NLP features.",
-    "V4": "Cross-validated model with feature stability and improved explainability.",
-    "V5": "Production-ready model with calibrated thresholds and drift detection."
-}
-
-def get_model_info(version: str) -> str:
-    """Return sidebar caption text for a given model version."""
-    return MODEL_INFO.get(version, "Experimental TD/ASD model.")
 
 def _discover_models() -> list[str]:
     """Return available model versions by scanning Results/* that look like V{number}."""
@@ -163,15 +52,15 @@ def _discover_models() -> list[str]:
             versions.append(p.name.upper())
     return versions or ["V1", "V2", "V3", "V4", "V5"]
 
-def _discover_culstering_models() -> list[str]:
+def _discover_clustering_models() -> list[str]:
     """Return available clustering model versions by scanning Results/* that look like Clustering_V{number}."""
-    if not RESULTS_ROOT.exists():
-        return ["Clustering_V1", "Clustering_V2"]
+    if not CLUSTER_RESULTS_ROOT.exists():
+        return ["No Clustering Results Found"]
     versions = []
-    for p in sorted(RESULTS_ROOT.iterdir()):
-        if p.is_dir() and p.name.upper().startswith("CLUSTERING"):
+    for p in sorted(CLUSTER_RESULTS_ROOT.iterdir()):
+        if p.is_dir() and p.name.upper().startswith("V") and p.name[1].isdigit():
             versions.append(p.name.upper())
-    return versions or ["Clustering_V1", "Clustering_V2"]
+    return versions or ["No Clustering Results Found"]
 
 def _discover_datasets() -> list[str]:
     """Return available datasets by scanning data/* that look like Data_v{number}."""
@@ -182,11 +71,6 @@ def _discover_datasets() -> list[str]:
         if p.is_dir() and p.name.upper().startswith("DATA_V"):
             versions.append(p.name.upper())
     return versions or ["V1", "V2", "V3", "V4"]
-
-
-def get_overview_md(version: str) -> str:
-    """Return Model MD Card based on Model Version Selection."""
-    return MODEL_OVERVIEW_MD.get(version, MODEL_OVERVIEW_MD["V1"])
 
 # Initialize session state and model selection
 if "page" not in st.session_state:
@@ -204,10 +88,17 @@ if "available_models" not in st.session_state:
 if "available_datasets" not in st.session_state:
     st.session_state.available_datasets = _discover_datasets()
 
+if "clustering_version" not in st.session_state:
+    st.session_state.clustering_version = "V1"
+
+if "available_clustering_models" not in st.session_state:
+    st.session_state.available_clustering_models = _discover_clustering_models()
+
 class DemoApp:
     def __init__(self):
         self.model_version = st.session_state.model_version
         self.data_version = st.session_state.data_version
+        self.clustering_version = st.session_state.clustering_version
         self.results_dir = RESULTS_ROOT / self.model_version
         self.data_dir = DATA_ROOT / f"Data_{self.model_version}"
         self.viz_dir = self.results_dir / "visualizations"
@@ -230,6 +121,12 @@ class DemoApp:
         self.data_version = version
         st.session_state.data_version = version
         self.data_dir = DATA_ROOT / self.data_version
+
+    def set_clustering_version(self, version: str):
+        """Update the app to a new clustering version and refresh paths."""
+        self.clustering_version = version
+        st.session_state.clustering_version = version
+
 
 
     # ----- Data / Model loading  -----
@@ -504,41 +401,41 @@ class DemoApp:
                 #         st.rerun()
 
         with tab2:
-            # --- Model V1 ---
-            with st.expander("Model V1", expanded=False):
-                st.write("""
-                            - Base Dataset : Data V2 
-                            - Engineered Features: 
-                                - PE (as avg_PE)
-                                - NLP Features:  
-                            - Train-Test Split : 80-20 Stratified 5-Fold CV
-                            -  
-                            """)
-
-            # --- Model V2 ---
-            with st.expander("Model V2", expanded=False):
-                st.write("""
-                            - Base Dataset : Data V2 
-                            - Engineered Features: 
-                                - PE (as avg_PE)
-                                - NLP Features:  
-                                - Characteristic Features:
-                                    -LLM Agent : Claud Sonnet 3.5 via Bedrock API
-                            - Train-Test Split : 80-20 Stratified 5-Fold CV
-                            -  
-                            """)
-
-            # --- Model V3 ---
-            with st.expander("Model V3", expanded=False):
-                st.write("""
-                            - Base Dataset : Data V2 
-                            - Engineered Features: 
-                                - PE (as avg_PE)
-                                - NLP Features:  
-                                - Characteristic Features
-                            - Train-Test Split : 80-20 Stratified 5-Fold CV
-                            -  
-                            """)
+            # # --- Model V1 ---
+            # with st.expander("Model V1", expanded=False):
+            #     st.write("""
+            #                 - Base Dataset : Data V2
+            #                 - Engineered Features:
+            #                     - PE (as avg_PE)
+            #                     - NLP Features:
+            #                 - Train-Test Split : 80-20 Stratified 5-Fold CV
+            #                 -
+            #                 """)
+            #
+            # # --- Model V2 ---
+            # with st.expander("Model V2", expanded=False):
+            #     st.write("""
+            #                 - Base Dataset : Data V2
+            #                 - Engineered Features:
+            #                     - PE (as avg_PE)
+            #                     - NLP Features:
+            #                     - Characteristic Features:
+            #                         -LLM Agent : Claud Sonnet 3.5 via Bedrock API
+            #                 - Train-Test Split : 80-20 Stratified 5-Fold CV
+            #                 -
+            #                 """)
+            #
+            # # --- Model V3 ---
+            # with st.expander("Model V3", expanded=False):
+            #     st.write("""
+            #                 - Base Dataset : Data V2
+            #                 - Engineered Features:
+            #                     - PE (as avg_PE)
+            #                     - NLP Features:
+            #                     - Characteristic Features
+            #                 - Train-Test Split : 80-20 Stratified 5-Fold CV
+            #                 -
+            #                 """)
 
             # --- Model V7-1 ---
             with st.expander("Model V7-1", expanded=False):
@@ -574,6 +471,42 @@ class DemoApp:
                             - Metric Maximized : Accuracy
                             - Hyperparameters : *Need to be Filled in*
                             - Intuition/Reasoning for Model - Developed New Concept Features to Replace Previous Slope Calculation
+                            """)
+
+            # --- Model V8-1 ---
+            with st.expander("Model V8-1", expanded=False):
+                st.write("""
+                            - Base Dataset : Data V3 
+                            - Features Used : PE + Concept Learning + NLP Features
+                            - Train-Test Split : 80-20 Stratified 5-Fold CV
+                            - Model : XGBOOST
+                            - Metric Maximized : Accuracy
+                            - Hyperparameters : *Need to be Filled in*
+                            - Intuition/Reasoning for Model - Developed Non FSR model to compare against V7-1
+                            """)
+
+            # --- Model V8-2 ---
+            with st.expander("Model V8-2", expanded=False):
+                st.write("""
+                            - Base Dataset : Data V3 
+                            - Features Used : PE + Concept Learning + NLP Features
+                            - Train-Test Split : FSR Overlap Region as Test Set
+                            - Model : XGBOOST
+                            - Metric Maximized : Accuracy
+                            - Hyperparameters : *Need to be Filled in*
+                            - Intuition/Reasoning for Model - Developed Non FSR model to compare against V7-2
+                            """)
+
+            # --- Model V8-3 ---
+            with st.expander("Model V8-3", expanded=False):
+                st.write("""
+                            - Base Dataset : Data V3 
+                            - Features Used : PE + Concept Learning + NLP Features
+                            - Train-Test Split : FSR Overlap Region as Train Set
+                            - Model : XGBOOST
+                            - Metric Maximized : Accuracy
+                            - Hyperparameters : *Need to be Filled in*
+                            - Intuition/Reasoning for Model - Developed Non FSR model to compare against V7-3
                             """)
 
     def show_eda_page(self):
@@ -1186,252 +1119,211 @@ class DemoApp:
                     explanation = build_shap_explanation_text(res)
                     st.markdown(explanation)
 
-
-
     def show_cluster_analysis_page(self):
-        st.header("Cluster Analysis 🧩")
-        st.caption("Unified UI for PCA+KMeans, PCA+GMM, and t-SNE+HDBSCAN")
+        st.header("Cluster Analysis")
+        st.caption("")
 
-        # ------------------------------
-        # 1) Method selection
-        # ------------------------------
-        method_label = st.selectbox(
-            "Clustering method",
-            [
-                "PCA + KMeans (V1)",
-                "PCA + GMM (V2)",
-                "t-SNE + HDBSCAN (V3)",
-            ],
-            index=2,
+        st.markdown("""
+                    <style>
+                    /* Center and evenly space Streamlit tabs */
+                    div[data-baseweb="tab-list"] {
+                        justify-content: space-evenly;
+                    }
+                    </style>
+                """, unsafe_allow_html=True)
+
+        selected = st.selectbox(
+            "Choose which Clustering version to explore:",
+            options=st.session_state.available_clustering_models,
+            index=st.session_state.available_clustering_models.index(st.session_state.clustering_version)
+            if st.session_state.clustering_version in st.session_state.available_clustering_models else 0,
+            key="clustering_version_select"
         )
 
-        method_map = {
-            "PCA + KMeans (V1)": "pca_kmeans",
-            "PCA + GMM (V2)": "pca_gmm",
-            "t-SNE + HDBSCAN (V3)": "tsne_hdbscan",
-        }
-        model_type = method_map[method_label]
+        # Apply selection immediately if changed
+        if selected != self.clustering_version:
+            self.set_clustering_version(selected)
+            st.success(f"Clustering version set to **{self.clustering_version}**.")
+            st.rerun()
 
-        # ------------------------------
-        # 2) Feature set selection
-        # ------------------------------
-        feature_label = st.radio(
-            "Feature set for clustering",
-            [
-                "7 Numeric (scaled)",
-                "5 Numeric (scaled)",
-                "5 Numeric (scaled) + NLP",
-                "Without FSR (4 numeric_scaled + NLP)",
-                "Custom feature subset",
-            ],
-            index=2,
-            horizontal=True,
-        )
+        metadata_file = CLUSTER_RESULTS_ROOT / self.clustering_version / "info.json"
+        with open(metadata_file, "r") as f:
+            info = json.load(f)
 
-        feature_map = {
-            "7 Numeric (scaled)": "all_numeric",
-            "5 Numeric (scaled)": "5_numeric",
-            "5 Numeric (scaled) + NLP": "5_numeric_nlp",
-            "Without FSR (4 numeric_scaled + NLP)": "4_numeric_nlp",
-            "Custom feature subset": "custom",
-        }
-        feature_mode = feature_map[feature_label]
+        plot_path = CLUSTER_RESULTS_ROOT / self.clustering_version / "plots"
 
-        custom_features: list[str] | None = None
+        with st.expander("Metadata Parameters", expanded=False):
+            for section_name, section_data in info.items():
+                st.markdown(f"### {section_name}")
 
-        # ------------------------------
-        # 2a) Custom feature UI
-        # ------------------------------
-        if feature_mode == "custom":
-            st.markdown("### Custom features")
-            st.markdown("##### Scaled Numeric features")
-            st.info(
-                "Select which **scaled numeric** features to include. "
-                "You can optionally add the full NLP feature block."
-            )
+                rows = []
+                for key, val in section_data.items():
+                    rows.append({"Parameter": key, "Value": format_value(val)})
 
-            numeric_feature_defs = [
-                ("FSR_scaled", "FSR_scaled"),
-                ("BIS_scaled", "BIS_scaled"),
-                ("SRS.Raw_scaled", "SRS.Raw_scaled"),
-                ("TDNorm_avg_PE_scaled", "TDNorm_avg_PE_scaled"),
-                ("overall_avg_PE_scaled", "overall_avg_PE_scaled"),
-                ("TDnorm_concept_learning_scaled", "TDnorm_concept_learning_scaled"),
-                ("overall_concept_learning_scaled", "overall_concept_learning_scaled"),
+                df_section = pd.DataFrame(rows)
+                st.table(df_section)
+
+        with st.expander("Principal Components", expanded=False):
+
+            pc_png_files = []
+            for p in sorted(plot_path.iterdir()):
+                if p.suffix == ".png" and p.name.upper().startswith("PC"):
+                    pc_png_files.append(p)
+
+            for file in pc_png_files:
+                st.markdown(f"### {file.stem}")
+
+                st.image(str(file),width=800,caption=file.name)
+
+                st.markdown("")
+
+        with st.expander("K - Selection Plots", expanded=False):
+
+            plot_files = [
+                "consensus_cdf.png",
+                "consensus_delta_cdf.png",
+                "consensus_auc_cdf.png",
+                "consensus_stability_curve.png",
+                "consensus_PAC_curve.png",
             ]
 
-            selected_numeric = []
-            cols = st.columns(3)
-            for i, (col_name, label) in enumerate(numeric_feature_defs):
-                with cols[i % 3]:
-                    checked = st.checkbox(
-                        label,
-                        value=True,
-                        key=f"cust_num_{col_name}",
-                    )
-                    if checked:
-                        selected_numeric.append(col_name)
+            images = []
+            titles = []
 
-            st.markdown("---")
-            st.markdown("##### NLP features")
+            for fname in plot_files:
+                fpath = plot_path / fname
+                if fpath.exists():
+                    img = Image.open(fpath)
+                    img = img.resize((900, 500))
+                    images.append(img)
+                    titles.append(fname.replace(".png", ""))
+                else:
+                    st.warning(f"Missing plot: {fname}")
 
-            include_nlp = st.checkbox(
-                "Include NLP features",
-                value=True,
-                help=(
-                    "If checked, the following features are added:\n "
-                    "word_count, sentence_count, char_count, avg_word_length, "
-                    "avg_sentence_length, shortness_score, lexical_diversity, "
-                    "sentiment_polarity, sentiment_subjectivity, positive_word_count, "
-                    "negative_word_count, positive_word_ratio, negative_word_ratio, "
-                    "flesch_reading_ease, flesch_kincaid_grade."
-                ),
+            fig, axes = plt.subplots(2, 3, figsize=(20, 12))
+            axes = axes.flatten()
+
+            for ax in axes:
+                ax.axis("off")
+
+            # # Add borders for aesthetic consistency
+            # for ax in axes:
+            #     for spine in ax.spines.values():
+            #         spine.set_visible(True)
+            #         spine.set_linewidth(1.2)
+            #         spine.set_color("#666")
+
+            for idx, img in enumerate(images):
+                axes[idx].imshow(img)
+                axes[idx].set_title(
+                    titles[idx],
+                    fontsize=14,
+                    fontweight="bold",
+                    pad=10
+                )
+                axes[idx].set_xticks([])
+                axes[idx].set_yticks([])
+
+            best_k_file =  CLUSTER_RESULTS_ROOT / self.clustering_version / "best_k_selection.json"
+            with open(best_k_file, "r") as f:
+                best_k_info = json.load(f)
+
+            summary_text = (
+                f"Best-K Summary\n\n"
+                f"- PAC Minimum: {best_k_info['pac_min']}\n"
+                f"- PAC Knee:  {best_k_info['pac_kneedle']}\n"
+                f"- Max Stability:  {best_k_info['stab_max']}\n"
+                f"- Stability Knee:  {best_k_info['stab_kneedle']}\n"
+                f"- AUC Knee:  {best_k_info['auc_kneedle']}\n"
+                f"- AUC Knee:  {best_k_info['delta_auc_kneedle']}\n\n"
             )
 
-            custom_features = selected_numeric.copy()
-            if include_nlp:
-                custom_features += NLP_FEATURES
-
-            if not custom_features:
-                st.warning("No features selected yet – clustering will fail. Make sure to pick at least one.")
-
-            st.caption(
-                f"Custom feature subset selected (`feature_mode='custom'`). "
-                f"Total features: **{len(custom_features)}**"
+            axes[-1].text(
+                0.3, 0.7,
+                summary_text,
+                fontsize=14,
+                fontweight="bold",
+                va="top",
+                ha="left",
+                wrap=True
             )
+            axes[-1].set_xticks([])
+            axes[-1].set_yticks([])
 
-        # ------------------------------
-        # 3) Run ID
-        # ------------------------------
-        run_id = st.text_input(
-            "Run ID (used as suffix for saving results)",
-            value="ui",
-            help="If you change this, a new subfolder will be created in Results/Clustering/general/",
-        )
+            plt.tight_layout()
+            st.pyplot(fig)
 
-        st.markdown("---")
 
-        if "cluster_base_dir" not in st.session_state:
-            st.session_state.cluster_base_dir = ""
+        with st.expander("Significance Test Results", expanded=False):
+            significance_plot_file = CLUSTER_RESULTS_ROOT/ self.clustering_version / "significance_tests" / "significance.png"
+            st.image(str(significance_plot_file),width=800,caption=significance_plot_file.name)
 
-        # ------------------------------
-        # 4) Run button
-        # ------------------------------
-        if st.button("🚀 Run clustering"):
-            with st.spinner("Running clustering pipeline... this may take a few minutes."):
-                # 1) Load preprocessed data (or create it)
-                preprocessed_path = (
-                        PROJECT_ROOT
-                        / "data"
-                        / CLUSTER_DATA_VERSION
-                        / "data_preprocessed_clustering.csv"
-                )
+            dunn_dir = CLUSTER_RESULTS_ROOT / self.clustering_version / "significance_tests"
+            dunn_files = sorted([p for p in dunn_dir.iterdir() if p.name.startswith("dunn_") and p.suffix == ".png"])
 
-                if preprocessed_path.exists():
-                    df = pd.read_csv(preprocessed_path)
-                    print(f"Loaded preprocessed clustering data from {preprocessed_path}")
-                else:
-                    df = preprocess_clustering_data(PROJECT_ROOT)
-
-                # 2) Run analyzer
-                analyzer = GeneralClusterAnalyzer(
-                    project_root=PROJECT_ROOT,
-                    model_type=model_type,
-                    feature_mode=feature_mode,
-                    run_id=run_id,
-                    custom_features=custom_features,  # None unless feature_mode == "custom"
-                )
-                analyzer.run_pipeline(df)
-
-                # 3) Remember where results were written
-                base_name = f"{model_type}_{feature_mode}_{run_id}"
-                base_dir = (
-                        PROJECT_ROOT
-                        / "Results"
-                        / "Clustering"
-                        / "general"
-                        / base_name
-                )
-                st.session_state.cluster_base_dir = str(base_dir)
-
-            st.success(f"✅ Clustering completed and saved under:\n`{base_dir}`")
-
-        # ------------------------------
-        # 5) Show visuals from last run
-        # ------------------------------
-        base_dir_str = st.session_state.get("cluster_base_dir", "")
-        if not base_dir_str:
-            st.info("Run clustering above to see visualizations.")
-            return
-
-        base_dir = Path(base_dir_str)
-        td_asd_proj_dir = base_dir / "td_asd_clusters" / "projections"
-        asd_proj_dir = base_dir / "asd_subclusters" / "projections"
-
-        if not td_asd_proj_dir.exists():
-            st.warning(f"Projections directory not found: {td_asd_proj_dir}")
-            return
-
-        tab_all, tab_asd = st.tabs(
-            ["All Participants (TD + ASD)", "ASD-only Participants (ASD Subclusters)"]
-        )
-
-        explorer_file_map = {
-            "pca_kmeans": "pca_cluster_explorer_kmeans.html",
-            "pca_gmm": "pca_cluster_explorer_gmm.html",
-            "tsne_hdbscan": "tsne_cluster_explorer_hdbscan.html",
-        }
-
-        # interactive target projection HTML filenames
-        target_html_map = {
-            "pca_kmeans": "pca_target_projection_kmeans.html",
-            "pca_gmm": "pca_target_projection_gmm.html",
-            "tsne_hdbscan": "tsne_target_projection.html",
-        }
-
-        # (optional) static PNG fallback
-        target_png_map = {
-            "pca_kmeans": "pca_target_projection_kmeans.png",
-            "pca_gmm": "pca_target_projection_gmm.png",
-            "tsne_hdbscan": "tsne_target_projection.png",
-        }
-
-        def render_cluster_tab(proj_dir: Path, context_label: str):
-            st.subheader(f"Cluster Explorer — {context_label}")
-            explorer_file = proj_dir / explorer_file_map[model_type]
-            if explorer_file.exists():
-                html_str = explorer_file.read_text(encoding="utf-8")
-                components.html(html_str, height=650, scrolling=True)
+            if len(dunn_files) == 0:
+                st.warning("No Dunn matrix PNGs found.")
             else:
-                st.info(f"Explorer file not found: `{explorer_file.name}`")
+                n = len(dunn_files)
+                cols = 2
+                rows = math.ceil(n / cols)
 
-            st.markdown("---")
-            st.subheader(f"Target Projection (TD vs ASD) — {context_label}")
+                fig, axes = plt.subplots(rows, cols, figsize=(12, 2 * rows))
 
-            # --- interactive target projection (preferred) ---
-            target_html = proj_dir / target_html_map[model_type]
-            if target_html.exists():
-                html_str = target_html.read_text(encoding="utf-8")
-                components.html(html_str, height=600, scrolling=True, width=1200)
+                if rows == 1:
+                    axes = np.array([axes])
+                axes = axes.flatten()
+
+                for ax, file in zip(axes, dunn_files):
+                    img = Image.open(file)
+                    ax.imshow(img)
+                    ax.axis("off")
+
+                for i in range(len(dunn_files), len(axes)):
+                    axes[i].axis("off")
+
+                st.pyplot(fig)
+
+
+        with st.expander("Cluster Profiles", expanded=False):
+
+            profile_dir = CLUSTER_RESULTS_ROOT / self.clustering_version / "cluster_profiles"
+            profile_files = sorted([p for p in profile_dir.iterdir() if p.name.startswith("profile_") and p.suffix == ".png"])
+
+            if len(profile_files) == 0:
+                st.warning("No profiles found")
             else:
-                # Fallback: static PNG if HTML is missing
-                target_png = proj_dir / target_png_map[model_type]
-                if target_png.exists():
-                    st.image(str(target_png), use_container_width=True)
-                else:
-                    st.info(
-                        f"Target projection file not found: "
-                        f"`{target_html.name}` or `{target_png.name}`"
-                    )
+                n = len(profile_files)
+                cols = 2
+                rows = math.ceil(n / cols)
 
-        with tab_all:
-            render_cluster_tab(td_asd_proj_dir, "All Participants")
+                fig, axes = plt.subplots(rows, cols, figsize=(12, 2 * rows))
 
-        with tab_asd:
-            if asd_proj_dir.exists():
-                render_cluster_tab(asd_proj_dir, "ASD-only")
-            else:
-                st.info("No ASD-only subclustering folder found (maybe no ASD rows).")
+                if rows == 1:
+                    axes = np.array([axes])
+                axes = axes.flatten()
+
+                for ax, file in zip(axes, profile_files):
+                    img = Image.open(file)
+                    ax.imshow(img)
+                    ax.axis("off")
+
+                for i in range(len(profile_files), len(axes)):
+                    axes[i].axis("off")
+
+                st.pyplot(fig)
+
+        with st.expander("TD Contamination", expanded=False):
+            contamination_file = CLUSTER_RESULTS_ROOT / self.clustering_version / "TD_Contamination_Report.png"
+            st.image(str(contamination_file), width=800, caption=file.name)
+
+
+
+
+def format_value(v):
+    if isinstance(v, list):
+        return ", ".join(map(str, v))
+    return v
 
 def main():
     app = DemoApp()
