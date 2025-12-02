@@ -1,0 +1,22 @@
+{
+  "booster": "dart",
+  "max_depth": 6,
+  "min_child_weight": 45,
+  "max_leaves": 1030,
+  "grow_policy": "depthwise",
+  "learning_rate": 0.10810109913557502,
+  "subsample": 0.9504094778274954,
+  "colsample_bytree": 0.9835838303754004,
+  "colsample_bylevel": 0.9745161890663262,
+  "colsample_bynode": 0.47576016392813497,
+  "gamma": 1.8162036355522655,
+  "reg_alpha": 0.0813636308766135,
+  "reg_lambda": 10.310586595956945,
+  "scale_pos_weight": 1.3321875637042824,
+  "max_bin": 161,
+  "sample_type": "weighted",
+  "normalize_type": "tree",
+  "rate_drop": 0.43991549330770086,
+  "skip_drop": 0.6122020811068443,
+  "n_estimators": 61
+}

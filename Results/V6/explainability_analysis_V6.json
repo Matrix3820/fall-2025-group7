@@ -1,0 +1,119 @@
+{
+  "model_performance": {
+    "total_features": 12,
+    "sample_size": 895
+  },
+  "characteristic_analysis": {},
+  "top_features": [
+    [
+      "FSR_scaled",
+      0.510141134262085
+    ],
+    [
+      "shortness_score",
+      0.05666859820485115
+    ],
+    [
+      "sentiment_polarity",
+      0.05437435209751129
+    ],
+    [
+      "TDNorm_avg_PE_scaled",
+      0.05007745325565338
+    ],
+    [
+      "word_count",
+      0.04935843124985695
+    ],
+    [
+      "flesch_reading_ease",
+      0.044084351509809494
+    ],
+    [
+      "TDnorm_concept_learning",
+      0.04259641468524933
+    ],
+    [
+      "lexical_diversity",
+      0.041518814861774445
+    ],
+    [
+      "flesch_kincaid_grade",
+      0.03990956395864487
+    ],
+    [
+      "overall_avg_PE_scaled",
+      0.03755320981144905
+    ],
+    [
+      "sentiment_subjectivity",
+      0.03734705597162247
+    ],
+    [
+      "overall_concept_learning",
+      0.03637067228555679
+    ]
+  ],
+  "td_vs_asd_patterns": [
+    {},
+    {}
+  ],
+  "text_patterns": {
+    "class_1": {
+      "total_texts": 487,
+      "total_words": 4882,
+      "unique_words": 982,
+      "top_words": {
+        "likes": 330,
+        "he": 327,
+        "and": 307,
+        "like": 232,
+        "a": 104,
+        "not": 97,
+        "she": 97,
+        "of": 78,
+        "is": 77,
+        "to": 68,
+        "but": 62,
+        "food": 60,
+        "i": 60,
+        "they": 59,
+        "does": 51,
+        "doesn't": 50,
+        "some": 46,
+        "the": 44,
+        "that": 39,
+        "music": 38
+      },
+      "avg_text_length": 54.54209445585216
+    },
+    "class_0": {
+      "total_texts": 304,
+      "total_words": 4349,
+      "unique_words": 921,
+      "top_words": {
+        "likes": 260,
+        "and": 258,
+        "he": 231,
+        "like": 198,
+        "she": 128,
+        "not": 90,
+        "a": 72,
+        "the": 71,
+        "of": 68,
+        "to": 65,
+        "is": 64,
+        "but": 62,
+        "i": 53,
+        "does": 51,
+        "they": 47,
+        "that": 47,
+        "food": 40,
+        "really": 39,
+        "doesn't": 39,
+        "things": 38
+      },
+      "avg_text_length": 80.57894736842105
+    }
+  }
+}

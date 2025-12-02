@@ -1,0 +1,7 @@
+2025-10-15 03:53:49,106 - ERROR - Error processing sample 218: No valid JSON found in response
+2025-10-15 04:01:45,037 - ERROR - Error processing sample 151: Expecting property name enclosed in double quotes: line 4 column 1 (char 63)
+2025-10-15 04:26:10,328 - ERROR - Error processing sample 1100: Expecting property name enclosed in double quotes: line 16 column 1 (char 382)
+2025-10-15 04:39:03,497 - ERROR - Error processing sample 330: No valid JSON found in response
+2025-10-15 04:48:50,783 - ERROR - Error processing sample 66: Expecting ',' delimiter: line 16 column 6 (char 363)
+2025-10-15 05:42:23,467 - ERROR - Error processing sample 1035: No valid JSON found in response
+2025-10-15 06:34:05,798 - ERROR - Error processing sample 761: Expecting ':' delimiter: line 8 column 1 (char 126)

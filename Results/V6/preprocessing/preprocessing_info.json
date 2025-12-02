@@ -1,0 +1,26 @@
+{
+  "original_shape": [
+    2647,
+    11
+  ],
+  "filtered_shape": [
+    1119,
+    10
+  ],
+  "selected_columns": [
+    "sub",
+    "td_or_asd",
+    "FSR",
+    "BIS",
+    "SRS.Raw",
+    "TDNorm_avg_PE",
+    "overall_avg_PE",
+    "TDnorm_concept_learning",
+    "overall_concept_learning",
+    "free_response_TDprof_norm"
+  ],
+  "target_distribution": {
+    "1": 706,
+    "0": 413
+  }
+}
