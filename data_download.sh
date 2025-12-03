@@ -4,9 +4,6 @@ set -e
 FILE_ID="1zPUKv2Lfs3nRnSDbmLSGHfzvOA_qSamo"
 OUTPUT_NAME="data.zip"
 
-# Google Drive direct download URL
-FILE_URL="https://drive.google.com/uc?export=download&id=${FILE_ID}"
-
 # Google Drive direct download
 FILE_URL="https://drive.google.com/uc?export=download&id=${FILE_ID}"
 
@@ -22,5 +19,3 @@ if [ -d "$DIR_NAME" ]; then
 fi
 
 unzip -o "$OUTPUT_NAME"
-
-
