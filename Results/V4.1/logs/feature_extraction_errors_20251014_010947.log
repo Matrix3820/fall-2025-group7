@@ -1,7 +1,0 @@
-2025-10-14 01:16:25,444 - ERROR - Error processing sample 74: No valid JSON found in response
-2025-10-14 02:21:32,508 - ERROR - Error processing sample 698: Extra data: line 7 column 1 (char 98)
-2025-10-14 02:21:47,758 - ERROR - Error processing sample 699: Extra data: line 7 column 1 (char 98)
-2025-10-14 02:46:34,362 - ERROR - Error processing sample 943: Extra data: line 15 column 1 (char 255)
-2025-10-14 03:18:41,319 - ERROR - Error processing sample 1247: Extra data: line 7 column 1 (char 98)
-2025-10-14 03:59:46,912 - ERROR - Error processing sample 1628: Extra data: line 7 column 1 (char 98)
-2025-10-14 05:44:21,930 - INFO - We will use 90% of the memory on device 0 for storing the model, and 10% for the buffer to avoid OOM. You can set `max_memory` in to a higher value to use more memory (at your own risk).
