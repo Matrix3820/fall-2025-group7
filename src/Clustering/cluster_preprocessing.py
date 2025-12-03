@@ -177,8 +177,8 @@ def fetch_final_features(data,text_col,thresh,plot_path,Use_nlp=True):
 
     corr = df_num.corr(method="pearson")
 
-    plt.figure(figsize=(16, 12))
-    sns.heatmap(corr, cmap="coolwarm", center=0, square=True)
+    plt.figure(figsize=(15, 14))
+    sns.heatmap(corr, cmap="coolwarm", center=0, square=True,annot=True, fmt=".2f")
     plt.title("Correlation Heatmap")
     plt.show()
 
@@ -219,4 +219,4 @@ if __name__ == "__main__":
     df = pd.read_csv(data_path)
     print(f"Loaded raw data: {df.shape} from {data_path}")
 
-    _,_,_,_,_ = fetch_final_features(df,TEXT_COLUMN,0.3,"",True)
+    _,_,_,_,_,_ = fetch_final_features(df,TEXT_COLUMN,0.3,"",True)
