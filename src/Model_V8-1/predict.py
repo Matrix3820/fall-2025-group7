@@ -11,8 +11,8 @@ from .data_preprocessor import preprocess_prediction_data
 from .explainability_analysis import run_explainability_analysis
 from .visualization import create_visualizations
 
-data_version = "Data_v7-2"
-model_version = "V7-2"
+data_version = "Data_v8-1"
+model_version = "V8-1"
 
 class ModelPredictor:
     def __init__(self):

@@ -10,8 +10,8 @@ import matplotlib.pyplot as plt
 from .xgboost_model import XGBoostClassifier
 from .predict import ModelPredictor
 
-data_version = "Data_v7-2"
-model_version = "V7-2"
+data_version = "Data_v8-1"
+model_version = "V8-1"
 
 def _results_dir() -> Path:
     current_dir = Path(__file__).parent

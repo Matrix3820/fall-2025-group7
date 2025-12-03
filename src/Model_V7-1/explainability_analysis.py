@@ -3,7 +3,7 @@ import numpy as np
 import shap
 import matplotlib.pyplot as plt
 import seaborn as sns
-from xgboost_model import XGBoostClassifier
+from .xgboost_model import XGBoostClassifier
 import os
 import json
 from pathlib import Path

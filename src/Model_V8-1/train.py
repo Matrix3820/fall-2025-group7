@@ -4,8 +4,8 @@ import pandas as pd
 from .data_preprocessor import preprocess_training_data
 from .xgboost_model import train_xgboost_model
 
-data_version = "Data_v7-1"
-model_version = "V7-1"
+data_version = "Data_v8-1"
+model_version = "V8-1"
 
 def run_complete_training_pipeline():
     print("=" * 60)
